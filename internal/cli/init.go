@@ -3,15 +3,25 @@ package cli
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
 	"github.com/airbugg/kivtz/internal/config"
 	"github.com/airbugg/kivtz/internal/platform"
+	"github.com/airbugg/kivtz/internal/scanner"
 	"github.com/spf13/cobra"
 )
 
+var (
+	initList bool
+	initJSON bool
+)
+
 func init() {
+	initCmd.Flags().BoolVar(&initList, "list", false, "output discovered configs as name<tab>path, one per line")
+	initCmd.Flags().BoolVar(&initJSON, "json", false, "output discovered configs as a JSON array")
+	initCmd.MarkFlagsMutuallyExclusive("list", "json")
 	rootCmd.AddCommand(initCmd)
 }
 
@@ -23,6 +33,18 @@ var initCmd = &cobra.Command{
 }
 
 func runInit(_ *cobra.Command, args []string) error {
+	if initList || initJSON {
+		pinfo, err := platform.Detect()
+		if err != nil {
+			return err
+		}
+		mode := "list"
+		if initJSON {
+			mode = "json"
+		}
+		return runDiscovery(pinfo.HomeDir, os.Stdout, os.Stderr, mode)
+	}
+
 	pinfo, err := platform.Detect()
 	if err != nil {
 		return err
@@ -100,5 +122,25 @@ func runInit(_ *cobra.Command, args []string) error {
 
 	fmt.Println()
 	return nil
+}
+
+// runDiscovery scans root for configs and writes results to stdout in the given mode ("list" or "json").
+// Status messages go to stderr.
+func runDiscovery(root string, stdout, stderr io.Writer, mode string) error {
+	fmt.Fprintf(stderr, "Scanning %s for configs...\n", root)
+
+	entries, err := scanner.Scan(root)
+	if err != nil {
+		return fmt.Errorf("scan failed: %w", err)
+	}
+
+	fmt.Fprintf(stderr, "Found %d configs\n", len(entries))
+
+	switch mode {
+	case "json":
+		return scanner.WriteJSON(stdout, entries)
+	default:
+		return scanner.WriteList(stdout, entries)
+	}
 }
 
