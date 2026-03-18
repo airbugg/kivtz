@@ -241,6 +241,133 @@ func TestDiscoveryFlow_writesConfigWithDotfilesDir(t *testing.T) {
 	assert.Contains(t, cfg.Packages, "git")
 }
 
+// Re-scan: when all configs already managed, shows "no configs found"
+func TestDiscoveryFlow_rescanAllManagedShowsNone(t *testing.T) {
+	root := t.TempDir()
+	dotfilesDir := filepath.Join(root, ".dotfiles")
+	configPath := filepath.Join(root, ".config", "kivtz", "config.toml")
+
+	// Both fish and git already managed
+	require.NoError(t, os.MkdirAll(filepath.Join(dotfilesDir, "fish"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(dotfilesDir, "git"), 0o755))
+
+	var out bytes.Buffer
+	opts := discoveryOpts{
+		homeDir:     root,
+		dotfilesDir: dotfilesDir,
+		configPath:  configPath,
+		out:         &out,
+		in:          strings.NewReader(""),
+		scan: func(_ string) ([]scanner.Entry, error) {
+			return []scanner.Entry{fishEntry(root), gitEntry(root)}, nil
+		},
+		selectFn: func(_, _ []scanner.Entry) ([]scanner.Entry, error) {
+			t.Fatal("selectFn should not be called when all configs managed")
+			return nil, nil
+		},
+	}
+
+	err := runDiscoveryFlow(opts)
+	require.NoError(t, err)
+	assert.Contains(t, out.String(), "No configs found")
+}
+
+// --yes flag: uses pre-selected, skips TUI and confirmation
+func TestDiscoveryFlow_yesFlagUsesPreSelected(t *testing.T) {
+	root := t.TempDir()
+	dotfilesDir := filepath.Join(root, ".dotfiles")
+	configPath := filepath.Join(root, ".config", "kivtz", "config.toml")
+
+	// Create real source files
+	fishDir := filepath.Join(root, ".config", "fish")
+	require.NoError(t, os.MkdirAll(fishDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(fishDir, "config.fish"), []byte("# fish"), 0o644))
+
+	gitFile := filepath.Join(root, ".gitconfig")
+	require.NoError(t, os.WriteFile(gitFile, []byte("[user]"), 0o644))
+
+	fish := fishEntry(root)
+	git := gitEntry(root)
+
+	selectCalled := false
+	var out bytes.Buffer
+	opts := discoveryOpts{
+		homeDir:     root,
+		dotfilesDir: dotfilesDir,
+		configPath:  configPath,
+		out:         &out,
+		in:          strings.NewReader(""), // no input — --yes means no prompts
+		yes:         true,
+		scan: func(_ string) ([]scanner.Entry, error) {
+			return []scanner.Entry{fish, git}, nil
+		},
+		selectFn: func(_, _ []scanner.Entry) ([]scanner.Entry, error) {
+			selectCalled = true
+			return nil, nil
+		},
+	}
+
+	err := runDiscoveryFlow(opts)
+	require.NoError(t, err)
+
+	// TUI should NOT be called
+	assert.False(t, selectCalled, "selectFn should not be called with --yes")
+
+	// Config should be written with adopted packages
+	cfg, err := config.Load(configPath)
+	require.NoError(t, err)
+	assert.NotEmpty(t, cfg.Packages)
+}
+
+// Re-scan: already-managed packages are filtered out
+func TestDiscoveryFlow_rescanFiltersManaged(t *testing.T) {
+	root := t.TempDir()
+	dotfilesDir := filepath.Join(root, ".dotfiles")
+	configPath := filepath.Join(root, ".config", "kivtz", "config.toml")
+
+	// Create nvim source for adoption
+	nvimDir := filepath.Join(root, ".config", "nvim")
+	require.NoError(t, os.MkdirAll(nvimDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(nvimDir, "init.lua"), []byte("-- nvim"), 0o644))
+
+	// Simulate fish already managed: exists in dotfiles dir
+	require.NoError(t, os.MkdirAll(filepath.Join(dotfilesDir, "fish"), 0o755))
+
+	fish := fishEntry(root)
+	nvim := scanner.Entry{
+		Name:      "nvim",
+		Path:      nvimDir,
+		Size:      256,
+		ModTime:   fish.ModTime,
+		FileCount: 1,
+		IsDir:     true,
+	}
+
+	var selectCalled []scanner.Entry
+	var out bytes.Buffer
+	opts := discoveryOpts{
+		homeDir:     root,
+		dotfilesDir: dotfilesDir,
+		configPath:  configPath,
+		out:         &out,
+		in:          strings.NewReader("y\n"),
+		scan: func(_ string) ([]scanner.Entry, error) {
+			return []scanner.Entry{fish, nvim}, nil
+		},
+		selectFn: func(entries, _ []scanner.Entry) ([]scanner.Entry, error) {
+			selectCalled = entries
+			return entries, nil
+		},
+	}
+
+	err := runDiscoveryFlow(opts)
+	require.NoError(t, err)
+
+	// Only nvim should be presented to TUI (fish is already managed)
+	require.Len(t, selectCalled, 1)
+	assert.Equal(t, "nvim", selectCalled[0].Name)
+}
+
 // Adoption failure for one entry doesn't stop others
 func TestDiscoveryFlow_partialAdoptionContinues(t *testing.T) {
 	root := t.TempDir()

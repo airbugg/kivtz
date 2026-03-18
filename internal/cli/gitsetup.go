@@ -35,3 +35,16 @@ func runGitSetup(dotfilesDir string, out io.Writer, in io.Reader) error {
 	}
 	return nil
 }
+
+// runGitSetupAuto runs git setup commands without prompts (--yes mode).
+func runGitSetupAuto(dotfilesDir string, out io.Writer) error {
+	fmt.Fprintf(out, "\n  %s\n\n", bold.Render("Set up git"))
+
+	cmds := gitSetupCommands(dotfilesDir, out, nil)
+	for _, c := range cmds {
+		if _, err := c.Run(); err != nil {
+			fmt.Fprintf(out, "  %s %s\n", warning.Render("warning:"), err)
+		}
+	}
+	return nil
+}

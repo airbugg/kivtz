@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 
 	"github.com/airbugg/kivtz/internal/adopter"
@@ -19,6 +20,7 @@ type discoveryOpts struct {
 	configPath  string
 	out         io.Writer
 	in          io.Reader
+	yes         bool // --yes: accept all defaults, no prompts
 	scan        func(root string) ([]scanner.Entry, error)
 	selectFn    func(entries, preSelected []scanner.Entry) ([]scanner.Entry, error)
 }
@@ -31,6 +33,9 @@ func runDiscoveryFlow(opts discoveryOpts) error {
 		return fmt.Errorf("scan failed: %w", err)
 	}
 
+	// Filter out already-managed packages (re-scan case)
+	entries = filterUnmanaged(entries, opts.dotfilesDir)
+
 	if len(entries) == 0 {
 		fmt.Fprintln(opts.out, "  No configs found to manage.")
 		return nil
@@ -41,29 +46,39 @@ func runDiscoveryFlow(opts discoveryOpts) error {
 	// Score and pre-select
 	preSelected := scanner.PreSelected(entries, 4)
 
-	// TUI selection
-	selected, err := opts.selectFn(entries, preSelected)
-	if err != nil {
-		return fmt.Errorf("selection failed: %w", err)
-	}
-	if len(selected) == 0 {
-		fmt.Fprintln(opts.out, "  No configs selected.")
-		return nil
-	}
+	var selected []scanner.Entry
+	if opts.yes {
+		// --yes: use pre-selected, skip TUI and confirmation
+		selected = preSelected
+		if len(selected) == 0 {
+			selected = entries // fallback to all if none scored high enough
+		}
+	} else {
+		// TUI selection
+		var err error
+		selected, err = opts.selectFn(entries, preSelected)
+		if err != nil {
+			return fmt.Errorf("selection failed: %w", err)
+		}
+		if len(selected) == 0 {
+			fmt.Fprintln(opts.out, "  No configs selected.")
+			return nil
+		}
 
-	// Summary
-	fmt.Fprintf(opts.out, "\n  Moving %d configs into %s\n", len(selected), opts.dotfilesDir)
-	for _, e := range selected {
-		fmt.Fprintf(opts.out, "    %s %s\n", adopter.PackageName(e.Path), dim.Render(e.Path))
-	}
+		// Summary
+		fmt.Fprintf(opts.out, "\n  Moving %d configs into %s\n", len(selected), opts.dotfilesDir)
+		for _, e := range selected {
+			fmt.Fprintf(opts.out, "    %s %s\n", adopter.PackageName(e.Path), dim.Render(e.Path))
+		}
 
-	// Confirm
-	fmt.Fprintf(opts.out, "\n  Proceed? [Y/n] ")
-	reader := bufio.NewReader(opts.in)
-	answer, _ := reader.ReadString('\n')
-	if !isYes(answer) {
-		fmt.Fprintln(opts.out, "  Aborted.")
-		return nil
+		// Confirm
+		fmt.Fprintf(opts.out, "\n  Proceed? [Y/n] ")
+		reader := bufio.NewReader(opts.in)
+		answer, _ := reader.ReadString('\n')
+		if !isYes(answer) {
+			fmt.Fprintln(opts.out, "  Aborted.")
+			return nil
+		}
 	}
 
 	// Ensure dotfiles dir exists
@@ -102,5 +117,25 @@ func runDiscoveryFlow(opts discoveryOpts) error {
 	fmt.Fprintf(opts.out, "\n  %s %s\n", success.Render("config saved:"), opts.configPath)
 
 	// Offer git init + GitHub repo creation
+	if opts.yes {
+		return runGitSetupAuto(opts.dotfilesDir, opts.out)
+	}
 	return runGitSetup(opts.dotfilesDir, opts.out, opts.in)
+}
+
+// filterUnmanaged removes entries whose package name already exists in dotfilesDir.
+func filterUnmanaged(entries []scanner.Entry, dotfilesDir string) []scanner.Entry {
+	if dotfilesDir == "" {
+		return entries
+	}
+	var filtered []scanner.Entry
+	for _, e := range entries {
+		pkgName := adopter.PackageName(e.Path)
+		pkgDir := filepath.Join(dotfilesDir, pkgName)
+		if _, err := os.Stat(pkgDir); err == nil {
+			continue // already managed
+		}
+		filtered = append(filtered, e)
+	}
+	return filtered
 }

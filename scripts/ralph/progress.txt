@@ -161,3 +161,18 @@ Branch: ralph/init-discovery
   - EOF on io.Reader causes Prompt() to return ("", nil) — safe no-op, existing tests don't need updating
   - cmd() helper closure in gitSetupCommands keeps Dir/Output/Input DRY across all commands
 ---
+
+## 2026-03-19 - US-012
+- Implemented re-scan filtering: filterUnmanaged() excludes entries whose package already exists in dotfilesDir
+- Added --yes/-y flag: skips TUI selection (uses pre-selected), skips confirmation, runs git setup without prompts
+- Refactored clone flow to use command module: runCloneFlowWithOpts() with cloneOpts struct for testability
+- Updated runInit routing: URL → clone, no URL + existing dotfiles → discovery (re-scan), no URL + RepoURL but missing dir → clone
+- Added runGitSetupAuto() for non-interactive git setup in --yes mode
+- 6 RED→GREEN cycles: re-scan filter, re-scan all-managed, --yes flag, clone config save, clone command transparency, --yes flag wired
+- Files: internal/cli/discovery.go, internal/cli/discovery_test.go, internal/cli/init.go, internal/cli/init_test.go, internal/cli/gitsetup.go
+- **Learnings for future iterations:**
+  - filterUnmanaged using os.Stat on dotfilesDir/<pkg> is simple and avoids config dependency
+  - cloneOpts struct mirrors discoveryOpts pattern — consistent injectable dependency pattern across flows
+  - Testing clone with local bare git repos (git init --bare) avoids network calls in tests
+  - Routing logic benefits from explicit URL-first check rather than compound conditions
+---
