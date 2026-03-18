@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/airbugg/kivtz/internal/config"
 	"github.com/airbugg/kivtz/internal/platform"
 	"github.com/airbugg/kivtz/internal/scanner"
+	"github.com/airbugg/kivtz/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -53,11 +55,30 @@ func runInit(_ *cobra.Command, args []string) error {
 	configPath := config.DefaultPath(pinfo.HomeDir)
 	cfg, _ := config.Load(configPath)
 
-	reader := bufio.NewReader(os.Stdin)
-
 	fmt.Println()
 	fmt.Printf("  %s\n", bold.Render("kivtz init"))
 	fmt.Printf("  %s %s/%s\n\n", dim.Render("detected:"), pinfo.OS, pinfo.Arch)
+
+	// No URL arg and no existing repo → discovery flow
+	if len(args) == 0 && cfg.RepoURL == "" {
+		defaultDir := filepath.Join(pinfo.HomeDir, ".dotfiles")
+		return runDiscoveryFlow(discoveryOpts{
+			homeDir:     pinfo.HomeDir,
+			dotfilesDir: defaultDir,
+			configPath:  configPath,
+			out:         os.Stdout,
+			in:          os.Stdin,
+			scan:        scanner.Scan,
+			selectFn:    tui.RunSelector,
+		})
+	}
+
+	// Clone flow (existing behavior)
+	return runCloneFlow(pinfo, cfg, configPath, args)
+}
+
+func runCloneFlow(pinfo platform.Info, cfg config.Config, configPath string, args []string) error {
+	reader := bufio.NewReader(os.Stdin)
 
 	// Determine repo URL
 	var repoURL string
@@ -70,13 +91,6 @@ func runInit(_ *cobra.Command, args []string) error {
 			repoURL = a
 		} else {
 			repoURL = cfg.RepoURL
-		}
-	} else {
-		fmt.Printf("  repo URL: ")
-		answer, _ := reader.ReadString('\n')
-		repoURL = strings.TrimSpace(answer)
-		if repoURL == "" {
-			return fmt.Errorf("repo URL is required")
 		}
 	}
 

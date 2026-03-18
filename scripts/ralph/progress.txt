@@ -8,6 +8,8 @@ Branch: ralph/init-discovery
 - Inject io.Reader/io.Writer for testing interactive prompts — never depend on real TTY in tests
 - Use enriched error types (errors.As) for structured error inspection in tests
 - golangci-lint panics on this repo due to go1.25/go1.26 toolchain mismatch — skip for now
+- Test bubbletea TUI models by testing their constituent logic (categorization, selection) separately — not the model itself
+- Use function-type fields in opts structs to inject TUI/scanner/adopter dependencies for testing orchestration flows
 ---
 
 ## 2026-03-18 - US-001
@@ -112,4 +114,36 @@ Branch: ralph/init-discovery
   - Injecting configPath+io.Writer into testable runAdd() keeps cobra wiring minimal
   - packageStats() via filepath.WalkDir after adoption is simple and reliable for summary
   - slices.Contains for dedup is cleaner than manual loop
+---
+
+## 2026-03-19 - US-009
+- Implemented internal/tui/ package: category.go, selection.go, model.go
+- Categorize() groups entries into Shell, Development, Terminal, Other
+- Selection struct tracks checked/unchecked state with pre-selection support
+- bubbletea Model with grouped display, cursor navigation, space toggle, enter confirm
+- RunSelector() convenience function for running the TUI and returning selected entries
+- Added charmbracelet/bubbletea and charmbracelet/bubbles dependencies
+- 21 tests total: 7 categorization, 6 selection state, 8 model logic (grouping, pre-selection, cursor, confirm/quit, empty categories, formatEntryInfo)
+- Files: internal/tui/category.go, internal/tui/category_test.go, internal/tui/selection.go, internal/tui/selection_test.go, internal/tui/model.go, internal/tui/model_test.go
+- **Learnings for future iterations:**
+  - Separating categorization, selection state, and bubbletea model into distinct files keeps each concern testable
+  - classifyEntry() reuses same suffix-stripping logic as scanner's isKnownPattern — consistent approach
+  - bubbletea models are best tested by testing their constituent logic (categorization, selection) separately
+  - Items list with IsHeader flag allows flat iteration while preserving grouped display
+---
+
+## 2026-03-19 - US-010
+- Implemented discovery-first orchestration: scan → score → TUI select → summary → confirm → adopt → config
+- discoveryOpts struct with injectable dependencies (scan, selectFn, io.Reader/Writer) for full testability
+- runDiscoveryFlow() orchestrates the full pipeline; wired into runInit when no URL arg and no existing repo
+- Extracted existing clone logic into runCloneFlow() for separation of concerns
+- Handles edge cases: no configs found, empty selection (quit TUI), user declines, partial adoption failures
+- Summary shows config count and dotfiles dir before confirmation
+- Adopted packages written to config.toml with dedup
+- 7 RED→GREEN cycles: tracer bullet (adopt+config), summary display, abort on "n", empty selection, no configs found, config written with dotfiles dir, partial adoption continues
+- Files: internal/cli/discovery.go, internal/cli/discovery_test.go, internal/cli/init.go
+- **Learnings for future iterations:**
+  - Function-type fields in an opts struct are ideal for injecting TUI and scanner in tests
+  - Separating orchestration (discovery.go) from CLI wiring (init.go) keeps both focused
+  - Testing partial failure (one adopt fails, others succeed) caught a real edge case
 ---

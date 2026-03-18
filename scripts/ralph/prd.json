@@ -164,7 +164,7 @@
         "go vet ./... passes"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "TDD: Start by testing the categorization function — fish→shell, git→development, ghostty→terminal, unknown→other. The bubbletea model itself is hard to unit test; focus TDD on the grouping/categorization and selection state logic. Add charmbracelet/bubbletea and charmbracelet/bubbles as dependencies."
     },
     {
@@ -183,7 +183,7 @@
         "go vet ./... passes"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": "TDD: Start by testing the orchestration logic with injected scanner and adopter — verify that selected entries get adopted and config is written. The TUI interaction is hard to test; focus on the pre/post TUI logic. This story wires together scanner, adopter, TUI, and config modules."
     },
     {
