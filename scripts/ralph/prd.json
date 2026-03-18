@@ -203,7 +203,7 @@
         "go vet ./... passes"
       ],
       "priority": 11,
-      "passes": false,
+      "passes": true,
       "notes": "TDD: Start by testing that the correct command.Cmd objects are created for git init, gh repo create, git add/commit/push. Test that dry-run mode skips execution. The interactive prompts rely on the command module's existing prompt logic from US-001."
     },
     {

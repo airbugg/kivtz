@@ -147,3 +147,17 @@ Branch: ralph/init-discovery
   - Separating orchestration (discovery.go) from CLI wiring (init.go) keeps both focused
   - Testing partial failure (one adopt fails, others succeed) caught a real edge case
 ---
+
+## 2026-03-19 - US-011
+- Implemented git/GitHub integration after discovery-first adoption flow
+- gitSetupCommands() builds command.Cmd sequence: git init, gh repo create, git add, git commit
+- runGitSetup() prompts each command via command.Prompt() — user can Y/n/m each one
+- Wired into runDiscoveryFlow() after config save; only runs when adoption succeeds
+- gh repo create uses --private --source --push for single-step repo creation
+- 7 RED→GREEN cycles: git init cmd, gh repo create cmd, git add/commit cmds, runGitSetup prompts all, runGitSetup shows header, discovery flow offers git setup, discovery flow skips git setup on abort
+- Files: internal/cli/gitsetup.go, internal/cli/gitsetup_test.go, internal/cli/discovery.go
+- **Learnings for future iterations:**
+  - Reusing command module's Prompt() keeps git setup consistent with US-001 patterns
+  - EOF on io.Reader causes Prompt() to return ("", nil) — safe no-op, existing tests don't need updating
+  - cmd() helper closure in gitSetupCommands keeps Dir/Output/Input DRY across all commands
+---

@@ -101,5 +101,6 @@ func runDiscoveryFlow(opts discoveryOpts) error {
 	}
 	fmt.Fprintf(opts.out, "\n  %s %s\n", success.Render("config saved:"), opts.configPath)
 
-	return nil
+	// Offer git init + GitHub repo creation
+	return runGitSetup(opts.dotfilesDir, opts.out, opts.in)
 }
