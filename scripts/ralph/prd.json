@@ -1,0 +1,264 @@
+{
+  "project": "kivtz — Intelligent dotfile discovery and adoption",
+  "branchName": "ralph/init-discovery",
+  "description": "Redesign kivtz init as a discovery-first experience with filesystem scanning, scoring, TUI multi-select, flat repo adoption, transparent command execution, and per-machine package selection.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Command module — transparent execution engine",
+      "description": "As a developer, I want every external command (git, gh) shown as a copyable string before execution, with enriched error messages and dry-run support, so that I can see exactly what the tool is doing and opt out.",
+      "acceptanceCriteria": [
+        "internal/command/ package exists with builder pattern: New(\"git\", \"clone\", url).Dir(path)",
+        "cmd.String() returns the full command as a copyable string",
+        "cmd.Run() executes and returns enriched error with context on failure",
+        "cmd.DryRun() prints the command without executing",
+        "Interactive prompt: \"Run this? [Y/n/I'll do it myself]\" — Y runs, n skips, manual shows command and moves on",
+        "Prompt is skipped when stdin is not a TTY (non-interactive mode)",
+        "Tests written before implementation (TDD)",
+        "go build ./... passes",
+        "go vet ./... passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "TDD: Start by testing cmd.String() renders 'git clone https://example.com /tmp/repo' correctly. Then test Run() returns enriched error when command fails (e.g., 'git clone' with bad URL). Then test DryRun() produces output without side effects. Interactive prompt logic can be tested by injecting an io.Reader."
+    },
+    {
+      "id": "US-002",
+      "title": "Scanner — core filesystem discovery",
+      "description": "As a developer, I want kivtz to scan my machine for config files worth managing, collecting only filesystem metadata (paths, stat, directory structure) without reading file content.",
+      "acceptanceCriteria": [
+        "internal/scanner/ package exists",
+        "Scan() walks ~/.config/* (XDG) and ~/.* (traditional dotfiles)",
+        "Returns []Entry with fields: Name, Path, Size, ModTime, FileCount, IsDir",
+        "Never reads file content — uses only os.Stat, os.ReadDir",
+        "Accepts a root dir parameter (testable with temp dirs, not hardcoded to $HOME)",
+        "Tests written before implementation (TDD)",
+        "go build ./... passes",
+        "go vet ./... passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "TDD: Start by testing Scan() with a temp dir containing ~/.config/fish/ and ~/.gitconfig. Verify it returns both entries with correct metadata. Then test that it does NOT descend into nested dirs (only top-level entries). Follow existing test patterns in internal/stow/stow_test.go and internal/drift/drift_test.go using t.TempDir()."
+    },
+    {
+      "id": "US-003",
+      "title": "Scanner — deny-list and size/count filtering",
+      "description": "As a developer, I want dangerous files (secrets, history, caches) and bloated directories automatically excluded from discovery, so I can't accidentally commit my .npmrc or .cache.",
+      "acceptanceCriteria": [
+        "Hardcoded deny-list filters: .ssh, .gnupg, .npmrc, .bash_history, .zsh_history, .cache, .local, node_modules, .Trash, and other secret/runtime patterns",
+        "Size filter: entries with total size >1MB are excluded",
+        "File count filter: directories with >100 files are excluded",
+        "Deny-list is exported as a var for testability",
+        "Tests written before implementation (TDD)",
+        "go build ./... passes",
+        "go vet ./... passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "TDD: Start by testing that a temp dir containing .ssh/ and .cache/ are excluded from Scan() results. Then test that a directory with 150 files is excluded. Then test that a 2MB file is excluded. Check internal/drift/drift.go for existing deny-list patterns to align with."
+    },
+    {
+      "id": "US-004",
+      "title": "Scanner — scoring heuristic and pre-selection",
+      "description": "As a developer, I want discovered configs scored by relevance with the most relevant pre-selected, so that the defaults are right 80-90% of the time.",
+      "acceptanceCriteria": [
+        "Score() function computes score per Entry based on: recently modified (+3), small size (+2), known config name pattern (+2), few files (+1)",
+        "Penalties: large >1MB (-5), deep nesting >5 levels (-2), many files >100 (-3)",
+        "Known config patterns include: fish, git, ghostty, nvim, vim, tmux, alacritty, kitty, starship, zsh, bash, ssh config (not keys)",
+        "PreSelected(threshold int) returns entries scoring above threshold",
+        "Results sorted by score descending",
+        "Tests written before implementation (TDD)",
+        "go build ./... passes",
+        "go vet ./... passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "TDD: Start by testing that a recently modified small config (fish) scores higher than a stale large directory. Then test known pattern boost. Then test penalty application. Then test threshold pre-selection returns expected subset."
+    },
+    {
+      "id": "US-005",
+      "title": "Adopter — move files and create symlinks",
+      "description": "As a developer, I want selected configs moved into a flat dotfiles directory and symlinked back to their original locations, so my tools keep working immediately.",
+      "acceptanceCriteria": [
+        "internal/adopter/ package exists",
+        "Adopt(source, dotfilesDir) moves source to dotfilesDir/<packageName>/ and creates symlink at original location",
+        "Derives package name from path: ~/.config/fish/ → fish, ~/.gitconfig → git, ~/.config/nvim/ → nvim",
+        "Handles both single files (~/.gitconfig) and directories (~/.config/fish/)",
+        "Preserves internal directory structure for directory configs",
+        "Returns error if source doesn't exist or symlink already points correctly",
+        "Tests written before implementation (TDD)",
+        "go build ./... passes",
+        "go vet ./... passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "TDD: Start by testing Adopt() for a directory (~/.config/fish/ with conf.d/ inside) — verify files moved and symlink created. Then test single file (~/.gitconfig). Then test PackageName() derivation for various paths. Use t.TempDir() for all filesystem operations."
+    },
+    {
+      "id": "US-006",
+      "title": "Config — per-machine packages field",
+      "description": "As a developer, I want each machine's selected packages stored in config.toml, so different machines can manage different subsets of my dotfiles.",
+      "acceptanceCriteria": [
+        "Config struct gains Packages []string field (toml:\"packages,omitempty\")",
+        "Load() reads packages from existing config",
+        "Save() writes packages to config",
+        "Loading a legacy config.toml without packages field returns empty slice (not nil), backward compatible",
+        "Tests written before implementation (TDD)",
+        "go build ./... passes",
+        "go vet ./... passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "TDD: Start by testing round-trip: Save config with packages [\"fish\", \"git\"], Load it back, verify packages match. Then test loading a legacy config.toml (no packages key) returns empty slice. Existing config_test.go has patterns to follow."
+    },
+    {
+      "id": "US-007",
+      "title": "Scanner — non-interactive output modes (--list, --json)",
+      "description": "As a developer, I want kivtz init --list and --json to output discovery results in machine-readable formats, so I can pipe them to grep, jq, or other tools.",
+      "acceptanceCriteria": [
+        "--list flag outputs newline-delimited name<tab>path to stdout",
+        "--json flag outputs JSON array of discovery results to stdout",
+        "Status/progress messages go to stderr only",
+        "Exit code 0 on success, 1 on error",
+        "POSIX composable: data to stdout, status to stderr",
+        "Tests written before implementation (TDD)",
+        "go build ./... passes",
+        "go vet ./... passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "TDD: Start by testing --list output format matches 'name\\tpath\\n' per entry. Then test --json output parses to expected struct. Use bytes.Buffer as stdout/stderr to capture output in tests. Wire as cobra flags on the init command."
+    },
+    {
+      "id": "US-008",
+      "title": "kivtz add — single config adoption",
+      "description": "As a developer, I want kivtz add ~/.config/nvim to adopt a single config into my dotfiles repo, so I can incrementally add configs after initial setup.",
+      "acceptanceCriteria": [
+        "New cobra command: kivtz add <path>",
+        "Uses adopter.Adopt() to move and symlink",
+        "Auto-detects package name from path (nvim from ~/.config/nvim)",
+        "Updates config.toml packages list to include new package",
+        "Errors clearly if dotfiles dir not configured",
+        "Shows summary: 'Adopted nvim (3 files, 2.1 KB)'",
+        "Tests written before implementation (TDD)",
+        "go build ./... passes",
+        "go vet ./... passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "TDD: Start by testing that add command with a temp config path calls Adopt() and updates config.toml packages. Then test auto-detect package name. Then test error case when dotfiles dir is not set."
+    },
+    {
+      "id": "US-009",
+      "title": "TUI — multi-select discovery interface",
+      "description": "As a developer, I want discovered configs presented in a multi-select TUI grouped by category, so I can quickly pick what to manage.",
+      "acceptanceCriteria": [
+        "bubbletea-based multi-select model in internal/tui/ or internal/cli/",
+        "Entries grouped by category: shell (fish, zsh, bash), development (git, nvim, vim), terminal (ghostty, alacritty, kitty, tmux), other",
+        "Each entry shows: name, file count, total size",
+        "Space toggles selection, Enter confirms",
+        "Pre-selected entries (from scorer) start checked",
+        "Returns []scanner.Entry of selected items",
+        "Categorization logic is tested (TDD)",
+        "go build ./... passes",
+        "go vet ./... passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "TDD: Start by testing the categorization function — fish→shell, git→development, ghostty→terminal, unknown→other. The bubbletea model itself is hard to unit test; focus TDD on the grouping/categorization and selection state logic. Add charmbracelet/bubbletea and charmbracelet/bubbles as dependencies."
+    },
+    {
+      "id": "US-010",
+      "title": "Init flow — discovery-first orchestration",
+      "description": "As a developer with no dotfiles repo, I want kivtz init to scan, score, present, adopt, and configure in one flow, so I go from zero to managed dotfiles.",
+      "acceptanceCriteria": [
+        "kivtz init (no URL) triggers: scan → score → TUI select → summary → confirm → adopt",
+        "Summary before execution: 'Moving N configs, creating M symlinks, initializing dotfiles at ~/dotfiles'",
+        "User confirms before any filesystem changes",
+        "After adoption, writes selected packages to config.toml",
+        "Dotfiles directory defaults to ~/.dotfiles, user can override",
+        "All user-facing messages use warm, professional tone (not cutesy)",
+        "Tests written before implementation (TDD)",
+        "go build ./... passes",
+        "go vet ./... passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "TDD: Start by testing the orchestration logic with injected scanner and adopter — verify that selected entries get adopted and config is written. The TUI interaction is hard to test; focus on the pre/post TUI logic. This story wires together scanner, adopter, TUI, and config modules."
+    },
+    {
+      "id": "US-011",
+      "title": "Init flow — git and GitHub integration",
+      "description": "As a developer, I want kivtz to offer to initialize git and create a GitHub repo after adopting configs, so I go from zero to synced in one session.",
+      "acceptanceCriteria": [
+        "After adoption, offers: 'Initialize git repo?' via command module prompt",
+        "If yes, runs git init through command module (transparent, copyable)",
+        "Then offers: 'Create GitHub repo?' via command module prompt",
+        "If yes, runs gh repo create through command module",
+        "Then offers initial commit and push",
+        "All commands use 'Run this? [Y/n/I'll do it myself]' pattern",
+        "'I'll do it myself' shows the command and moves on without executing",
+        "Tests written before implementation (TDD)",
+        "go build ./... passes",
+        "go vet ./... passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "TDD: Start by testing that the correct command.Cmd objects are created for git init, gh repo create, git add/commit/push. Test that dry-run mode skips execution. The interactive prompts rely on the command module's existing prompt logic from US-001."
+    },
+    {
+      "id": "US-012",
+      "title": "Init flow — existing repo, re-scan, and --yes",
+      "description": "As a developer, I want kivtz init with a URL to clone an existing repo (current behavior), re-running init to discover new configs, and --yes for scripted setup.",
+      "acceptanceCriteria": [
+        "kivtz init <URL> clones existing repo and runs sync (preserves current behavior)",
+        "Clone uses command module for transparent execution",
+        "Re-running kivtz init (dotfiles dir exists) re-scans and shows only NEW unmanaged configs",
+        "--yes flag accepts all defaults: pre-selected configs adopted, git init, no prompts",
+        "Tests written before implementation (TDD)",
+        "go build ./... passes",
+        "go vet ./... passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "TDD: Start by testing URL detection (has URL arg → clone flow, no URL → discovery flow). Then test re-scan filtering: create a temp dotfiles dir with fish/, scan returns nvim but not fish. Then test --yes flag skips all prompts."
+    },
+    {
+      "id": "US-013",
+      "title": "Sync — package-aware selective application",
+      "description": "As a developer, I want kivtz sync to only apply packages listed in my machine's config, so my Linux server doesn't get macOS-specific configs.",
+      "acceptanceCriteria": [
+        "Sync reads Packages from config.toml",
+        "Only applies packages listed in config (flat iteration, not platform groups)",
+        "If Packages is empty/missing, applies ALL packages in dotfiles dir (backward compatible)",
+        "planAll() updated to iterate flat packages instead of platform groups",
+        "Drift detection updated for flat package structure",
+        "Tests written before implementation (TDD)",
+        "go build ./... passes",
+        "go vet ./... passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": "TDD: Start by testing planAll() with a flat dotfiles dir (fish/, git/) and config with packages=[\"fish\"] — verify only fish is planned. Then test empty packages applies all. This is a significant refactor of the sync flow — the platform group iteration (pinfo.Groups()) gets replaced with flat package iteration."
+    },
+    {
+      "id": "US-014",
+      "title": "Migrate existing shell-outs to command module",
+      "description": "As a developer, I want all existing git shell-outs replaced with the command module, so every external command in the CLI is transparent and inspectable.",
+      "acceptanceCriteria": [
+        "runGit() helper in root.go is removed",
+        "All call sites (root.go, sync.go, init.go) use command.New(\"git\", ...) instead",
+        "gitPull, gitCommitAndPush, gitRepoStatus, and clone logic all use command module",
+        "isOnline() check remains as-is (not an external command)",
+        "Existing tests continue to pass",
+        "No functional behavior change — same operations, now transparent",
+        "Tests written before implementation (TDD)",
+        "go build ./... passes",
+        "go vet ./... passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": "TDD: Start by writing tests that verify the command module produces the same commands as the current runGit() calls. Then swap implementations. This is a refactor — run existing tests after each change to ensure no regression. Focus on sync.go's gitPull and gitCommitAndPush first since they have the most complex command sequences."
+    }
+  ]
+}

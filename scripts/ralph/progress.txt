@@ -1,0 +1,34 @@
+# Ralph Progress Log
+Started: 2026-03-18
+PRD: Intelligent dotfile discovery, adoption, and transparent command execution
+Branch: ralph/init-discovery
+
+## Codebase Patterns
+- Test command execution through builder pattern's public API (String, Run, DryRun, Prompt)
+- Inject io.Reader/io.Writer for testing interactive prompts — never depend on real TTY in tests
+- Use enriched error types (errors.As) for structured error inspection in tests
+- golangci-lint panics on this repo due to go1.25/go1.26 toolchain mismatch — skip for now
+---
+
+## 2026-03-18 - US-001
+- Implemented internal/command/ package: builder pattern, String(), Run(), DryRun(), Prompt()
+- Enriched Error type with Command, Stderr, and Unwrap support
+- 10 RED→GREEN cycles: String rendering, Dir setting, Run success/failure, enriched errors, DryRun output, Prompt Y/n/m/default
+- Files: internal/command/command.go, internal/command/command_test.go
+- **Learnings for future iterations:**
+  - Builder pattern with method chaining works well for command configuration
+  - Injecting io.Reader for prompt testing is clean and simple
+  - errors.As pattern ideal for testing enriched errors
+---
+
+## 2026-03-18 - US-002
+- Implemented internal/scanner/ package: Scan() discovers XDG (.config/*) and traditional (~.*) dotfiles
+- Entry struct: Name, Path, Size, ModTime, FileCount, IsDir
+- Uses only os.Stat/os.ReadDir/filepath.WalkDir — never reads file content
+- 6 RED→GREEN cycles: XDG+traditional discovery, directory metadata, single file metadata, top-level only, .config exclusion, empty root
+- Files: internal/scanner/scanner.go, internal/scanner/scanner_test.go
+- **Learnings for future iterations:**
+  - buildEntry helper with dirStats walker keeps Scan() clean
+  - Most tests passed on first implementation — good sign the API design was right
+  - t.TempDir() pattern continues to work well for filesystem tests
+---
