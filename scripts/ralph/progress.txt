@@ -85,3 +85,17 @@ Branch: ralph/init-discovery
   - Adding a slice field with a non-nil invariant requires updating existing tests that compare zero-value structs
   - TOML omitempty on slices works as expected — empty slice omits the key
 ---
+
+## 2026-03-18 - US-007
+- Implemented scanner.WriteList() and scanner.WriteJSON() output formatters in internal/scanner/output.go
+- Added JSONEntry struct for clean JSON serialization with score included
+- Added --list and --json flags to init cobra command (mutually exclusive)
+- runDiscovery() function accepts io.Writer for stdout/stderr to enable testing with bytes.Buffer
+- Status messages go to stderr, data to stdout (POSIX composable)
+- 6 RED→GREEN cycles: WriteList format, WriteJSON parsable output, empty entries (list+json), JSON includes score, CLI integration (list mode, json mode, stderr routing)
+- Files: internal/scanner/output.go, internal/scanner/output_test.go, internal/cli/init.go, internal/cli/init_test.go
+- **Learnings for future iterations:**
+  - Injecting io.Writer for stdout/stderr is the cleanest way to test CLI output formatting
+  - Separating output formatting (scanner/output.go) from CLI wiring (cli/init.go) keeps both testable
+  - cobra's MarkFlagsMutuallyExclusive handles --list/--json exclusion cleanly
+---

@@ -126,7 +126,7 @@
         "go vet ./... passes"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "TDD: Start by testing --list output format matches 'name\\tpath\\n' per entry. Then test --json output parses to expected struct. Use bytes.Buffer as stdout/stderr to capture output in tests. Wire as cobra flags on the init command."
     },
     {
