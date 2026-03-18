@@ -257,7 +257,7 @@
         "go vet ./... passes"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": "TDD: Start by writing tests that verify the command module produces the same commands as the current runGit() calls. Then swap implementations. This is a refactor — run existing tests after each change to ensure no regression. Focus on sync.go's gitPull and gitCommitAndPush first since they have the most complex command sequences."
     }
   ]

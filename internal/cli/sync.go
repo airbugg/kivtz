@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/airbugg/kivtz/internal/command"
 	"github.com/airbugg/kivtz/internal/config"
 	"github.com/airbugg/kivtz/internal/drift"
 	"github.com/airbugg/kivtz/internal/platform"
@@ -145,29 +146,29 @@ func resolveConflicts(entries []stow.Entry) {
 }
 
 func gitPull(dir string) (bool, error) {
-	before, _ := runGit(dir, "rev-parse", "HEAD")
-	if _, err := runGit(dir, "pull", "--ff-only"); err != nil {
+	before, _ := command.New("git", "rev-parse", "HEAD").Dir(dir).Run()
+	if _, err := command.New("git", "pull", "--ff-only").Dir(dir).Run(); err != nil {
 		return false, err
 	}
-	after, _ := runGit(dir, "rev-parse", "HEAD")
+	after, _ := command.New("git", "rev-parse", "HEAD").Dir(dir).Run()
 	return strings.TrimSpace(before) != strings.TrimSpace(after), nil
 }
 
 func gitCommitAndPush(dir, msg string, online bool) error {
-	if _, err := runGit(dir, "add", "--all"); err != nil {
+	if _, err := command.New("git", "add", "--all").Dir(dir).Run(); err != nil {
 		return fmt.Errorf("staging: %w", err)
 	}
-	if _, err := runGit(dir, "commit", "-m", msg); err != nil {
+	if _, err := command.New("git", "commit", "-m", msg).Dir(dir).Run(); err != nil {
 		return fmt.Errorf("committing: %w", err)
 	}
 	if online {
-		runGit(dir, "push") // best-effort
+		command.New("git", "push").Dir(dir).Run() //nolint:errcheck // best-effort
 	}
 	return nil
 }
 
 func generateCommitMessage(dir string) string {
-	out, err := runGit(dir, "status", "--porcelain")
+	out, err := command.New("git", "status", "--porcelain").Dir(dir).Run()
 	if err != nil {
 		return "update configs"
 	}

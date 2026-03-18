@@ -190,3 +190,19 @@ Branch: ralph/init-discovery
   - discoverPackages() as a separate helper keeps planAll's package resolution testable
   - Updating all callers of a shared function in one pass avoids build breakage
 ---
+
+## 2026-03-19 - US-014
+- Migrated all runGit() call sites to command.New("git", ...).Dir(dir).Run()
+- Removed runGit() helper and os/exec import from root.go
+- Migrated functions: gitRepoStatus (root.go), gitPull, gitCommitAndPush, generateCommitMessage (sync.go)
+- doctor.go's versionOf() retains exec.LookPath/exec.Command (not git, out of scope)
+- isOnline() unchanged (not an external command)
+- 15 tests: 6 command string verification, 9 integration tests with real git repos
+- RED→GREEN cycles: characterization tests written first (pass with old impl), then swap to command module, verify all still pass
+- Files: internal/cli/root.go, internal/cli/sync.go, internal/cli/migrate_test.go
+- **Learnings for future iterations:**
+  - command.Run() returns only stdout (not CombinedOutput) — same behavior for status/rev-parse since they write to stdout
+  - command.Error enriched type replaces simple fmt.Errorf wrapping from runGit — callers using errors.As can inspect stderr
+  - Migrating all callers in one pass is necessary when removing a shared helper to avoid build breakage
+  - best-effort push needs //nolint:errcheck annotation since command.Run returns error
+---

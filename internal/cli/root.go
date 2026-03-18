@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/airbugg/kivtz/internal/command"
 	"github.com/airbugg/kivtz/internal/config"
 	"github.com/airbugg/kivtz/internal/platform"
 	"github.com/airbugg/kivtz/internal/stow"
@@ -177,7 +177,7 @@ type repoStatus struct {
 }
 
 func gitRepoStatus(dir string) (repoStatus, error) {
-	out, err := runGit(dir, "status", "--porcelain")
+	out, err := command.New("git", "status", "--porcelain").Dir(dir).Run()
 	if err != nil {
 		return repoStatus{}, err
 	}
@@ -186,16 +186,6 @@ func gitRepoStatus(dir string) (repoStatus, error) {
 		return repoStatus{clean: true}, nil
 	}
 	return repoStatus{changed: len(lines)}, nil
-}
-
-func runGit(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("git %s: %s", strings.Join(args, " "), strings.TrimSpace(string(out)))
-	}
-	return string(out), nil
 }
 
 func isOnline() bool {
