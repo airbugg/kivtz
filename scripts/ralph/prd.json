@@ -238,7 +238,7 @@
         "go vet ./... passes"
       ],
       "priority": 13,
-      "passes": false,
+      "passes": true,
       "notes": "TDD: Start by testing planAll() with a flat dotfiles dir (fish/, git/) and config with packages=[\"fish\"] — verify only fish is planned. Then test empty packages applies all. This is a significant refactor of the sync flow — the platform group iteration (pinfo.Groups()) gets replaced with flat package iteration."
     },
     {

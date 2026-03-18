@@ -176,3 +176,17 @@ Branch: ralph/init-discovery
   - Testing clone with local bare git repos (git init --bare) avoids network calls in tests
   - Routing logic benefits from explicit URL-first check rather than compound conditions
 ---
+
+## 2026-03-19 - US-013
+- Refactored planAll() from platform-group iteration to flat package iteration
+- New signature: planAll(dotfilesDir, targetDir string, packages []string)
+- Empty packages → discoverPackages() returns all subdirs (backward compatible)
+- Added detectDriftFlat() for flat-package drift detection, filtering by allowed packages
+- Updated all callers: runSync, runStatus (root.go), runDoctor (doctor.go)
+- 5 RED→GREEN cycles: package-filtered planAll, empty-packages fallback, nonexistent package skip, drift filtered by packages, drift empty-packages detects all
+- Files: internal/cli/root.go, internal/cli/sync.go, internal/cli/doctor.go, internal/cli/sync_test.go
+- **Learnings for future iterations:**
+  - drift.Detect already works with flat structure since dotfilesDir acts as the "group dir"
+  - discoverPackages() as a separate helper keeps planAll's package resolution testable
+  - Updating all callers of a shared function in one pass avoids build breakage
+---
