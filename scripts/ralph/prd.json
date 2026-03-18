@@ -72,7 +72,7 @@
         "go vet ./... passes"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": "TDD: Start by testing that a recently modified small config (fish) scores higher than a stale large directory. Then test known pattern boost. Then test penalty application. Then test threshold pre-selection returns expected subset."
     },
     {

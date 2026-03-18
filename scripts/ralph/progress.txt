@@ -44,3 +44,18 @@ Branch: ralph/init-discovery
   - Aligning with drift.go's deny-list concept but keeping scanner's list focused on top-level entry names (not filename patterns)
   - Size and count filters work well as constants (MaxSize, MaxFileCount) for easy adjustment
 ---
+
+## 2026-03-18 - US-004
+- Implemented Score() function: recently modified (+3), small size (+2), known pattern (+2), few files (+1)
+- Implemented penalties: large >1MB (-5), deep nesting >5 levels (-2), many files >100 (-3)
+- KnownPatterns exported var: fish, git, ghostty, nvim, vim, tmux, alacritty, kitty, starship, zsh, bash
+- isKnownPattern() strips leading dot and common suffixes (config, rc) for matching traditional dotfiles
+- PreSelected(entries, threshold) returns filtered+sorted entries by score descending
+- maxDepth() helper walks directory to compute nesting depth for penalty
+- 6 RED→GREEN cycles: tracer bullet (recent vs stale), known pattern boost, deep nesting penalty, PreSelected threshold, sort order, traditional dotfile pattern matching
+- Files: internal/scanner/score.go, internal/scanner/score_test.go
+- **Learnings for future iterations:**
+  - Separating score.go from scanner.go keeps concerns clean — scanning vs scoring
+  - isKnownPattern suffix stripping (.gitconfig→git, .bashrc→bash) covers traditional dotfile naming well
+  - maxDepth walk is fine for scoring since entries already passed size/count filters
+---
