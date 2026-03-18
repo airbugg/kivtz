@@ -145,7 +145,7 @@
         "go vet ./... passes"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "TDD: Start by testing that add command with a temp config path calls Adopt() and updates config.toml packages. Then test auto-detect package name. Then test error case when dotfiles dir is not set."
     },
     {

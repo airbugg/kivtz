@@ -99,3 +99,17 @@ Branch: ralph/init-discovery
   - Separating output formatting (scanner/output.go) from CLI wiring (cli/init.go) keeps both testable
   - cobra's MarkFlagsMutuallyExclusive handles --list/--json exclusion cleanly
 ---
+
+## 2026-03-19 - US-008
+- Implemented `kivtz add <path>` cobra command in internal/cli/add.go
+- Uses adopter.Adopt() + adopter.PackageName() for move/symlink and name detection
+- Updates config.toml packages list (with dedup via slices.Contains)
+- Shows summary with file count and human-readable size: "Adopted fish (3 files, 2.1 KB)"
+- Errors clearly when dotfiles dir not configured
+- 5 RED→GREEN cycles: no dotfiles dir error, adopt+config update, summary with stats, single file auto-detect, source not found error
+- Files: internal/cli/add.go, internal/cli/add_test.go
+- **Learnings for future iterations:**
+  - Injecting configPath+io.Writer into testable runAdd() keeps cobra wiring minimal
+  - packageStats() via filepath.WalkDir after adoption is simple and reliable for summary
+  - slices.Contains for dedup is cleaner than manual loop
+---
