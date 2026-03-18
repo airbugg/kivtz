@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/airbugg/kivtz/internal/config"
 	"github.com/airbugg/kivtz/internal/platform"
@@ -43,7 +44,7 @@ func runInit(_ *cobra.Command, args []string) error {
 	} else if cfg.RepoURL != "" {
 		fmt.Printf("  repo URL [%s]: ", dim.Render(cfg.RepoURL))
 		answer, _ := reader.ReadString('\n')
-		if a := trimLine(answer); a != "" {
+		if a := strings.TrimSpace(answer); a != "" {
 			repoURL = a
 		} else {
 			repoURL = cfg.RepoURL
@@ -51,7 +52,7 @@ func runInit(_ *cobra.Command, args []string) error {
 	} else {
 		fmt.Printf("  repo URL: ")
 		answer, _ := reader.ReadString('\n')
-		repoURL = trimLine(answer)
+		repoURL = strings.TrimSpace(answer)
 		if repoURL == "" {
 			return fmt.Errorf("repo URL is required")
 		}
@@ -65,7 +66,7 @@ func runInit(_ *cobra.Command, args []string) error {
 	fmt.Printf("  clone to [%s]: ", dim.Render(defaultPath))
 	answer, _ := reader.ReadString('\n')
 	dotfilesDir := defaultPath
-	if a := trimLine(answer); a != "" {
+	if a := strings.TrimSpace(answer); a != "" {
 		dotfilesDir = a
 	}
 
@@ -101,10 +102,3 @@ func runInit(_ *cobra.Command, args []string) error {
 	return nil
 }
 
-func trimLine(s string) string {
-	s = s[:max(0, len(s)-1)] // strip trailing newline
-	for len(s) > 0 && (s[len(s)-1] == ' ' || s[len(s)-1] == '\t') {
-		s = s[:len(s)-1]
-	}
-	return s
-}

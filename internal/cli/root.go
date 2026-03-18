@@ -69,19 +69,13 @@ func runStatus(_ *cobra.Command, _ []string) error {
 	}
 
 	cfg, _ := config.Load(config.DefaultPath(pinfo.HomeDir))
-	dotfilesDir := resolveDotfilesDir(cfg, pinfo)
+	dotfilesDir := cfg.DotfilesDir
 
 	fmt.Println()
 	fmt.Printf("  %s\n", bold.Render("kivtzeynekuda"))
 	fmt.Printf("  %s\n\n", dim.Render("הדָּקֻנְ יֵצְבָק"))
 
 	fmt.Printf("  %s  %s/%s (%s)\n", dim.Render("platform"), pinfo.OS, pinfo.Arch, pinfo.Hostname)
-
-	if isOnline() {
-		fmt.Printf("  %s  %s\n", dim.Render("network"), success.Render("online"))
-	} else {
-		fmt.Printf("  %s  %s\n", dim.Render("network"), warning.Render("offline"))
-	}
 
 	if dotfilesDir == "" {
 		fmt.Printf("\n  %s\n\n", dim.Render("run `kivtz init <url>` to set up your dotfiles"))
@@ -168,12 +162,6 @@ func planAll(pinfo platform.Info, dotfilesDir, targetOverride string) planResult
 	return result
 }
 
-func resolveDotfilesDir(cfg config.Config, _ platform.Info) string {
-	if cfg.DotfilesDir != "" {
-		return cfg.DotfilesDir
-	}
-	return ""
-}
 
 type repoStatus struct {
 	clean   bool
