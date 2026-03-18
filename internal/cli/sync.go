@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/airbugg/kivtz/internal/command"
 	"github.com/airbugg/kivtz/internal/config"
 	"github.com/airbugg/kivtz/internal/drift"
 	"github.com/airbugg/kivtz/internal/platform"
@@ -52,7 +53,7 @@ func runSync(_ *cobra.Command, _ []string) error {
 	}
 
 	// 2. Apply (auto-link safe changes)
-	plan := planAll(pinfo, dotfilesDir, "")
+	plan := planAll(dotfilesDir, pinfo.HomeDir, cfg.Packages)
 	if plan.pending > 0 {
 		if err := stow.Apply(plan.entries); err != nil {
 			fmt.Printf("  %s %v\n", errStyle.Render("apply error:"), err)
@@ -69,18 +70,11 @@ func runSync(_ *cobra.Command, _ []string) error {
 
 	// 4. Detect drift
 	ignorePatterns, _ := drift.ParseIgnoreFile(filepath.Join(dotfilesDir, ".syncignore"))
-	var allDrift []drift.Entry
-	for _, group := range pinfo.Groups() {
-		groupDir := filepath.Join(dotfilesDir, group)
-		if _, err := os.Stat(groupDir); os.IsNotExist(err) {
-			continue
-		}
-		d, err := drift.Detect(groupDir, pinfo.HomeDir, ignorePatterns)
-		if err != nil {
-			continue
-		}
-		allDrift = append(allDrift, d...)
+	packages := cfg.Packages
+	if len(packages) == 0 {
+		packages = discoverPackages(dotfilesDir)
 	}
+	allDrift := detectDriftFlat(dotfilesDir, pinfo.HomeDir, packages, ignorePatterns)
 
 	if len(allDrift) > 0 {
 		fmt.Printf("\n  %s\n", warning.Render(fmt.Sprintf("%d drifted files:", len(allDrift))))
@@ -152,29 +146,29 @@ func resolveConflicts(entries []stow.Entry) {
 }
 
 func gitPull(dir string) (bool, error) {
-	before, _ := runGit(dir, "rev-parse", "HEAD")
-	if _, err := runGit(dir, "pull", "--ff-only"); err != nil {
+	before, _ := command.New("git", "rev-parse", "HEAD").Dir(dir).Run()
+	if _, err := command.New("git", "pull", "--ff-only").Dir(dir).Run(); err != nil {
 		return false, err
 	}
-	after, _ := runGit(dir, "rev-parse", "HEAD")
+	after, _ := command.New("git", "rev-parse", "HEAD").Dir(dir).Run()
 	return strings.TrimSpace(before) != strings.TrimSpace(after), nil
 }
 
 func gitCommitAndPush(dir, msg string, online bool) error {
-	if _, err := runGit(dir, "add", "--all"); err != nil {
+	if _, err := command.New("git", "add", "--all").Dir(dir).Run(); err != nil {
 		return fmt.Errorf("staging: %w", err)
 	}
-	if _, err := runGit(dir, "commit", "-m", msg); err != nil {
+	if _, err := command.New("git", "commit", "-m", msg).Dir(dir).Run(); err != nil {
 		return fmt.Errorf("committing: %w", err)
 	}
 	if online {
-		runGit(dir, "push") // best-effort
+		command.New("git", "push").Dir(dir).Run() //nolint:errcheck // best-effort
 	}
 	return nil
 }
 
 func generateCommitMessage(dir string) string {
-	out, err := runGit(dir, "status", "--porcelain")
+	out, err := command.New("git", "status", "--porcelain").Dir(dir).Run()
 	if err != nil {
 		return "update configs"
 	}
@@ -195,6 +189,30 @@ func generateCommitMessage(dir string) string {
 		return "update configs"
 	}
 	return "update " + strings.Join(names, ", ")
+}
+
+// detectDriftFlat runs drift detection for flat packages in dotfilesDir.
+// drift.Detect treats dotfilesDir as a group dir containing package subdirs.
+// Results are filtered to only include the specified packages.
+func detectDriftFlat(dotfilesDir, homeDir string, packages []string, ignorePatterns []string) []drift.Entry {
+	d, err := drift.Detect(dotfilesDir, homeDir, ignorePatterns)
+	if err != nil {
+		return nil
+	}
+	if len(packages) == 0 {
+		return d
+	}
+	allowed := make(map[string]bool, len(packages))
+	for _, pkg := range packages {
+		allowed[pkg] = true
+	}
+	var filtered []drift.Entry
+	for _, entry := range d {
+		if allowed[entry.Package] {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered
 }
 
 func shortPath(path string) string {

@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/airbugg/kivtz/internal/command"
 	"github.com/airbugg/kivtz/internal/config"
 	"github.com/airbugg/kivtz/internal/platform"
 	"github.com/airbugg/kivtz/internal/stow"
@@ -92,7 +92,7 @@ func runStatus(_ *cobra.Command, _ []string) error {
 	}
 
 	// Stow status
-	result := planAll(pinfo, dotfilesDir, "")
+	result := planAll(dotfilesDir, pinfo.HomeDir, cfg.Packages)
 	if result.total > 0 {
 		fmt.Printf("  %s  %s", dim.Render("stow"), success.Render(fmt.Sprintf("%d linked", result.current)))
 		if result.pending > 0 {
@@ -124,42 +124,50 @@ type planResult struct {
 	total     int
 }
 
-func planAll(pinfo platform.Info, dotfilesDir, targetOverride string) planResult {
-	targetDir := pinfo.HomeDir
-	if targetOverride != "" {
-		targetDir = targetOverride
+// planAll plans stow operations for packages in dotfilesDir. If packages is
+// non-empty, only those packages are planned; otherwise all subdirectories
+// of dotfilesDir are treated as packages (backward compatible).
+func planAll(dotfilesDir, targetDir string, packages []string) planResult {
+	if len(packages) == 0 {
+		packages = discoverPackages(dotfilesDir)
 	}
 
 	var result planResult
-	for _, group := range pinfo.Groups() {
-		groupDir := filepath.Join(dotfilesDir, group)
-		entries, err := os.ReadDir(groupDir)
+	for _, pkg := range packages {
+		pkgDir := filepath.Join(dotfilesDir, pkg)
+		pkgEntries, err := stow.Plan(pkgDir, targetDir)
 		if err != nil {
 			continue
 		}
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
+		for _, pe := range pkgEntries {
+			result.total++
+			switch pe.Action {
+			case stow.Link:
+				result.pending++
+			case stow.Skip:
+				result.current++
+			case stow.Conflict:
+				result.conflicts++
 			}
-			pkgEntries, err := stow.Plan(filepath.Join(groupDir, e.Name()), targetDir)
-			if err != nil {
-				continue
-			}
-			for _, pe := range pkgEntries {
-				result.total++
-				switch pe.Action {
-				case stow.Link:
-					result.pending++
-				case stow.Skip:
-					result.current++
-				case stow.Conflict:
-					result.conflicts++
-				}
-			}
-			result.entries = append(result.entries, pkgEntries...)
 		}
+		result.entries = append(result.entries, pkgEntries...)
 	}
 	return result
+}
+
+// discoverPackages returns all subdirectory names in dotfilesDir.
+func discoverPackages(dotfilesDir string) []string {
+	entries, err := os.ReadDir(dotfilesDir)
+	if err != nil {
+		return nil
+	}
+	var pkgs []string
+	for _, e := range entries {
+		if e.IsDir() {
+			pkgs = append(pkgs, e.Name())
+		}
+	}
+	return pkgs
 }
 
 
@@ -169,7 +177,7 @@ type repoStatus struct {
 }
 
 func gitRepoStatus(dir string) (repoStatus, error) {
-	out, err := runGit(dir, "status", "--porcelain")
+	out, err := command.New("git", "status", "--porcelain").Dir(dir).Run()
 	if err != nil {
 		return repoStatus{}, err
 	}
@@ -178,16 +186,6 @@ func gitRepoStatus(dir string) (repoStatus, error) {
 		return repoStatus{clean: true}, nil
 	}
 	return repoStatus{changed: len(lines)}, nil
-}
-
-func runGit(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("git %s: %s", strings.Join(args, " "), strings.TrimSpace(string(out)))
-	}
-	return string(out), nil
 }
 
 func isOnline() bool {

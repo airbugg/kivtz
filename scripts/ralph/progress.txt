@@ -1,0 +1,208 @@
+# Ralph Progress Log
+Started: 2026-03-18
+PRD: Intelligent dotfile discovery, adoption, and transparent command execution
+Branch: ralph/init-discovery
+
+## Codebase Patterns
+- Test command execution through builder pattern's public API (String, Run, DryRun, Prompt)
+- Inject io.Reader/io.Writer for testing interactive prompts — never depend on real TTY in tests
+- Use enriched error types (errors.As) for structured error inspection in tests
+- golangci-lint panics on this repo due to go1.25/go1.26 toolchain mismatch — skip for now
+- Test bubbletea TUI models by testing their constituent logic (categorization, selection) separately — not the model itself
+- Use function-type fields in opts structs to inject TUI/scanner/adopter dependencies for testing orchestration flows
+---
+
+## 2026-03-18 - US-001
+- Implemented internal/command/ package: builder pattern, String(), Run(), DryRun(), Prompt()
+- Enriched Error type with Command, Stderr, and Unwrap support
+- 10 RED→GREEN cycles: String rendering, Dir setting, Run success/failure, enriched errors, DryRun output, Prompt Y/n/m/default
+- Files: internal/command/command.go, internal/command/command_test.go
+- **Learnings for future iterations:**
+  - Builder pattern with method chaining works well for command configuration
+  - Injecting io.Reader for prompt testing is clean and simple
+  - errors.As pattern ideal for testing enriched errors
+---
+
+## 2026-03-18 - US-002
+- Implemented internal/scanner/ package: Scan() discovers XDG (.config/*) and traditional (~.*) dotfiles
+- Entry struct: Name, Path, Size, ModTime, FileCount, IsDir
+- Uses only os.Stat/os.ReadDir/filepath.WalkDir — never reads file content
+- 6 RED→GREEN cycles: XDG+traditional discovery, directory metadata, single file metadata, top-level only, .config exclusion, empty root
+- Files: internal/scanner/scanner.go, internal/scanner/scanner_test.go
+- **Learnings for future iterations:**
+  - buildEntry helper with dirStats walker keeps Scan() clean
+  - Most tests passed on first implementation — good sign the API design was right
+  - t.TempDir() pattern continues to work well for filesystem tests
+---
+
+## 2026-03-18 - US-003
+- Added DenyList (exported var): .ssh, .gnupg, .gpg, .npmrc, .netrc, .env, .boto, history files, .cache, .local, .Trash, node_modules, .DS_Store, etc.
+- Added MaxSize (1MB) and MaxFileCount (100) filters applied during Scan()
+- isDenied() checks entry name against deny list; isFiltered() checks size and file count
+- 4 RED→GREEN cycles: deny-list exclusion, exported DenyList var, file count filter (150 files), size filter (2MB file + 1.2MB dir)
+- Files: internal/scanner/scanner.go, internal/scanner/scanner_test.go
+- **Learnings for future iterations:**
+  - Implementing deny-list + size/count filters in one pass was clean since they share the same insertion point
+  - Aligning with drift.go's deny-list concept but keeping scanner's list focused on top-level entry names (not filename patterns)
+  - Size and count filters work well as constants (MaxSize, MaxFileCount) for easy adjustment
+---
+
+## 2026-03-18 - US-004
+- Implemented Score() function: recently modified (+3), small size (+2), known pattern (+2), few files (+1)
+- Implemented penalties: large >1MB (-5), deep nesting >5 levels (-2), many files >100 (-3)
+- KnownPatterns exported var: fish, git, ghostty, nvim, vim, tmux, alacritty, kitty, starship, zsh, bash
+- isKnownPattern() strips leading dot and common suffixes (config, rc) for matching traditional dotfiles
+- PreSelected(entries, threshold) returns filtered+sorted entries by score descending
+- maxDepth() helper walks directory to compute nesting depth for penalty
+- 6 RED→GREEN cycles: tracer bullet (recent vs stale), known pattern boost, deep nesting penalty, PreSelected threshold, sort order, traditional dotfile pattern matching
+- Files: internal/scanner/score.go, internal/scanner/score_test.go
+- **Learnings for future iterations:**
+  - Separating score.go from scanner.go keeps concerns clean — scanning vs scoring
+  - isKnownPattern suffix stripping (.gitconfig→git, .bashrc→bash) covers traditional dotfile naming well
+  - maxDepth walk is fine for scoring since entries already passed size/count filters
+---
+
+## 2026-03-18 - US-005
+- Implemented internal/adopter/ package: PackageName() and Adopt() functions
+- PackageName() derives short name from path: XDG (.config/X → X), traditional (.gitconfig → git, .bashrc → bash)
+- Adopt() moves source to dotfilesDir/<pkg>/ and symlinks back; handles both dirs and single files
+- Directories moved atomically via os.Rename; single files placed in pkg subdirectory
+- Error cases: source doesn't exist, source already a symlink
+- 12 RED→GREEN cycles: 6 PackageName tests + 2 dir adopt + 2 file adopt + 2 error cases
+- Files: internal/adopter/adopter.go, internal/adopter/adopter_test.go
+- **Learnings for future iterations:**
+  - PackageName reuses same suffix-stripping logic as scanner's isKnownPattern — potential shared util if needed later
+  - os.Rename is atomic on same filesystem — ideal for adopt-and-symlink pattern
+  - Testing symlinks with os.Lstat (not os.Stat) is critical — os.Stat follows symlinks
+---
+
+## 2026-03-18 - US-006
+- Added Packages []string field to Config struct with `toml:"packages,omitempty"` tag
+- Load() ensures Packages is always empty slice (not nil) for both missing-file and legacy-config cases
+- Save() writes packages via existing TOML encoder — omits field when empty
+- 2 RED→GREEN cycles: packages round-trip, legacy config returns empty slice
+- Updated existing tests to accommodate non-nil Packages invariant
+- Files: internal/config/config.go, internal/config/config_test.go
+- **Learnings for future iterations:**
+  - Adding a slice field with a non-nil invariant requires updating existing tests that compare zero-value structs
+  - TOML omitempty on slices works as expected — empty slice omits the key
+---
+
+## 2026-03-18 - US-007
+- Implemented scanner.WriteList() and scanner.WriteJSON() output formatters in internal/scanner/output.go
+- Added JSONEntry struct for clean JSON serialization with score included
+- Added --list and --json flags to init cobra command (mutually exclusive)
+- runDiscovery() function accepts io.Writer for stdout/stderr to enable testing with bytes.Buffer
+- Status messages go to stderr, data to stdout (POSIX composable)
+- 6 RED→GREEN cycles: WriteList format, WriteJSON parsable output, empty entries (list+json), JSON includes score, CLI integration (list mode, json mode, stderr routing)
+- Files: internal/scanner/output.go, internal/scanner/output_test.go, internal/cli/init.go, internal/cli/init_test.go
+- **Learnings for future iterations:**
+  - Injecting io.Writer for stdout/stderr is the cleanest way to test CLI output formatting
+  - Separating output formatting (scanner/output.go) from CLI wiring (cli/init.go) keeps both testable
+  - cobra's MarkFlagsMutuallyExclusive handles --list/--json exclusion cleanly
+---
+
+## 2026-03-19 - US-008
+- Implemented `kivtz add <path>` cobra command in internal/cli/add.go
+- Uses adopter.Adopt() + adopter.PackageName() for move/symlink and name detection
+- Updates config.toml packages list (with dedup via slices.Contains)
+- Shows summary with file count and human-readable size: "Adopted fish (3 files, 2.1 KB)"
+- Errors clearly when dotfiles dir not configured
+- 5 RED→GREEN cycles: no dotfiles dir error, adopt+config update, summary with stats, single file auto-detect, source not found error
+- Files: internal/cli/add.go, internal/cli/add_test.go
+- **Learnings for future iterations:**
+  - Injecting configPath+io.Writer into testable runAdd() keeps cobra wiring minimal
+  - packageStats() via filepath.WalkDir after adoption is simple and reliable for summary
+  - slices.Contains for dedup is cleaner than manual loop
+---
+
+## 2026-03-19 - US-009
+- Implemented internal/tui/ package: category.go, selection.go, model.go
+- Categorize() groups entries into Shell, Development, Terminal, Other
+- Selection struct tracks checked/unchecked state with pre-selection support
+- bubbletea Model with grouped display, cursor navigation, space toggle, enter confirm
+- RunSelector() convenience function for running the TUI and returning selected entries
+- Added charmbracelet/bubbletea and charmbracelet/bubbles dependencies
+- 21 tests total: 7 categorization, 6 selection state, 8 model logic (grouping, pre-selection, cursor, confirm/quit, empty categories, formatEntryInfo)
+- Files: internal/tui/category.go, internal/tui/category_test.go, internal/tui/selection.go, internal/tui/selection_test.go, internal/tui/model.go, internal/tui/model_test.go
+- **Learnings for future iterations:**
+  - Separating categorization, selection state, and bubbletea model into distinct files keeps each concern testable
+  - classifyEntry() reuses same suffix-stripping logic as scanner's isKnownPattern — consistent approach
+  - bubbletea models are best tested by testing their constituent logic (categorization, selection) separately
+  - Items list with IsHeader flag allows flat iteration while preserving grouped display
+---
+
+## 2026-03-19 - US-010
+- Implemented discovery-first orchestration: scan → score → TUI select → summary → confirm → adopt → config
+- discoveryOpts struct with injectable dependencies (scan, selectFn, io.Reader/Writer) for full testability
+- runDiscoveryFlow() orchestrates the full pipeline; wired into runInit when no URL arg and no existing repo
+- Extracted existing clone logic into runCloneFlow() for separation of concerns
+- Handles edge cases: no configs found, empty selection (quit TUI), user declines, partial adoption failures
+- Summary shows config count and dotfiles dir before confirmation
+- Adopted packages written to config.toml with dedup
+- 7 RED→GREEN cycles: tracer bullet (adopt+config), summary display, abort on "n", empty selection, no configs found, config written with dotfiles dir, partial adoption continues
+- Files: internal/cli/discovery.go, internal/cli/discovery_test.go, internal/cli/init.go
+- **Learnings for future iterations:**
+  - Function-type fields in an opts struct are ideal for injecting TUI and scanner in tests
+  - Separating orchestration (discovery.go) from CLI wiring (init.go) keeps both focused
+  - Testing partial failure (one adopt fails, others succeed) caught a real edge case
+---
+
+## 2026-03-19 - US-011
+- Implemented git/GitHub integration after discovery-first adoption flow
+- gitSetupCommands() builds command.Cmd sequence: git init, gh repo create, git add, git commit
+- runGitSetup() prompts each command via command.Prompt() — user can Y/n/m each one
+- Wired into runDiscoveryFlow() after config save; only runs when adoption succeeds
+- gh repo create uses --private --source --push for single-step repo creation
+- 7 RED→GREEN cycles: git init cmd, gh repo create cmd, git add/commit cmds, runGitSetup prompts all, runGitSetup shows header, discovery flow offers git setup, discovery flow skips git setup on abort
+- Files: internal/cli/gitsetup.go, internal/cli/gitsetup_test.go, internal/cli/discovery.go
+- **Learnings for future iterations:**
+  - Reusing command module's Prompt() keeps git setup consistent with US-001 patterns
+  - EOF on io.Reader causes Prompt() to return ("", nil) — safe no-op, existing tests don't need updating
+  - cmd() helper closure in gitSetupCommands keeps Dir/Output/Input DRY across all commands
+---
+
+## 2026-03-19 - US-012
+- Implemented re-scan filtering: filterUnmanaged() excludes entries whose package already exists in dotfilesDir
+- Added --yes/-y flag: skips TUI selection (uses pre-selected), skips confirmation, runs git setup without prompts
+- Refactored clone flow to use command module: runCloneFlowWithOpts() with cloneOpts struct for testability
+- Updated runInit routing: URL → clone, no URL + existing dotfiles → discovery (re-scan), no URL + RepoURL but missing dir → clone
+- Added runGitSetupAuto() for non-interactive git setup in --yes mode
+- 6 RED→GREEN cycles: re-scan filter, re-scan all-managed, --yes flag, clone config save, clone command transparency, --yes flag wired
+- Files: internal/cli/discovery.go, internal/cli/discovery_test.go, internal/cli/init.go, internal/cli/init_test.go, internal/cli/gitsetup.go
+- **Learnings for future iterations:**
+  - filterUnmanaged using os.Stat on dotfilesDir/<pkg> is simple and avoids config dependency
+  - cloneOpts struct mirrors discoveryOpts pattern — consistent injectable dependency pattern across flows
+  - Testing clone with local bare git repos (git init --bare) avoids network calls in tests
+  - Routing logic benefits from explicit URL-first check rather than compound conditions
+---
+
+## 2026-03-19 - US-013
+- Refactored planAll() from platform-group iteration to flat package iteration
+- New signature: planAll(dotfilesDir, targetDir string, packages []string)
+- Empty packages → discoverPackages() returns all subdirs (backward compatible)
+- Added detectDriftFlat() for flat-package drift detection, filtering by allowed packages
+- Updated all callers: runSync, runStatus (root.go), runDoctor (doctor.go)
+- 5 RED→GREEN cycles: package-filtered planAll, empty-packages fallback, nonexistent package skip, drift filtered by packages, drift empty-packages detects all
+- Files: internal/cli/root.go, internal/cli/sync.go, internal/cli/doctor.go, internal/cli/sync_test.go
+- **Learnings for future iterations:**
+  - drift.Detect already works with flat structure since dotfilesDir acts as the "group dir"
+  - discoverPackages() as a separate helper keeps planAll's package resolution testable
+  - Updating all callers of a shared function in one pass avoids build breakage
+---
+
+## 2026-03-19 - US-014
+- Migrated all runGit() call sites to command.New("git", ...).Dir(dir).Run()
+- Removed runGit() helper and os/exec import from root.go
+- Migrated functions: gitRepoStatus (root.go), gitPull, gitCommitAndPush, generateCommitMessage (sync.go)
+- doctor.go's versionOf() retains exec.LookPath/exec.Command (not git, out of scope)
+- isOnline() unchanged (not an external command)
+- 15 tests: 6 command string verification, 9 integration tests with real git repos
+- RED→GREEN cycles: characterization tests written first (pass with old impl), then swap to command module, verify all still pass
+- Files: internal/cli/root.go, internal/cli/sync.go, internal/cli/migrate_test.go
+- **Learnings for future iterations:**
+  - command.Run() returns only stdout (not CombinedOutput) — same behavior for status/rev-parse since they write to stdout
+  - command.Error enriched type replaces simple fmt.Errorf wrapping from runGit — callers using errors.As can inspect stderr
+  - Migrating all callers in one pass is necessary when removing a shared helper to avoid build breakage
+  - best-effort push needs //nolint:errcheck annotation since command.Run returns error
+---

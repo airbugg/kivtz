@@ -59,7 +59,7 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 
 	// Stow
 	if dotfilesDir != "" {
-		result := planAll(pinfo, dotfilesDir, "")
+		result := planAll(dotfilesDir, pinfo.HomeDir, cfg.Packages)
 		detail := fmt.Sprintf("%d/%d linked", result.current, result.total)
 		if result.pending > 0 || result.conflicts > 0 {
 			check("stow", "warn", fmt.Sprintf("%s, %d pending, %d conflicts", detail, result.pending, result.conflicts))

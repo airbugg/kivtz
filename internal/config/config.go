@@ -12,10 +12,11 @@ import (
 
 // Config stores machine-specific kivtz preferences.
 type Config struct {
-	DotfilesDir string `toml:"dotfiles_dir"`
-	RepoURL     string `toml:"repo_url,omitempty"`
-	Platform    string `toml:"platform"`
-	Hostname    string `toml:"hostname"`
+	DotfilesDir string   `toml:"dotfiles_dir"`
+	RepoURL     string   `toml:"repo_url,omitempty"`
+	Platform    string   `toml:"platform"`
+	Hostname    string   `toml:"hostname"`
+	Packages    []string `toml:"packages,omitempty"`
 }
 
 // DefaultPath returns the XDG-compliant config file path.
@@ -28,12 +29,16 @@ func Load(path string) (Config, error) {
 	var cfg Config
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
+		cfg.Packages = []string{}
 		return cfg, nil
 	}
 	if err != nil {
 		return cfg, err
 	}
 	_, err = toml.Decode(string(data), &cfg)
+	if cfg.Packages == nil {
+		cfg.Packages = []string{}
+	}
 	return cfg, err
 }
 
