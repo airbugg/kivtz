@@ -59,3 +59,29 @@ Branch: ralph/init-discovery
   - isKnownPattern suffix stripping (.gitconfig→git, .bashrc→bash) covers traditional dotfile naming well
   - maxDepth walk is fine for scoring since entries already passed size/count filters
 ---
+
+## 2026-03-18 - US-005
+- Implemented internal/adopter/ package: PackageName() and Adopt() functions
+- PackageName() derives short name from path: XDG (.config/X → X), traditional (.gitconfig → git, .bashrc → bash)
+- Adopt() moves source to dotfilesDir/<pkg>/ and symlinks back; handles both dirs and single files
+- Directories moved atomically via os.Rename; single files placed in pkg subdirectory
+- Error cases: source doesn't exist, source already a symlink
+- 12 RED→GREEN cycles: 6 PackageName tests + 2 dir adopt + 2 file adopt + 2 error cases
+- Files: internal/adopter/adopter.go, internal/adopter/adopter_test.go
+- **Learnings for future iterations:**
+  - PackageName reuses same suffix-stripping logic as scanner's isKnownPattern — potential shared util if needed later
+  - os.Rename is atomic on same filesystem — ideal for adopt-and-symlink pattern
+  - Testing symlinks with os.Lstat (not os.Stat) is critical — os.Stat follows symlinks
+---
+
+## 2026-03-18 - US-006
+- Added Packages []string field to Config struct with `toml:"packages,omitempty"` tag
+- Load() ensures Packages is always empty slice (not nil) for both missing-file and legacy-config cases
+- Save() writes packages via existing TOML encoder — omits field when empty
+- 2 RED→GREEN cycles: packages round-trip, legacy config returns empty slice
+- Updated existing tests to accommodate non-nil Packages invariant
+- Files: internal/config/config.go, internal/config/config_test.go
+- **Learnings for future iterations:**
+  - Adding a slice field with a non-nil invariant requires updating existing tests that compare zero-value structs
+  - TOML omitempty on slices works as expected — empty slice omits the key
+---

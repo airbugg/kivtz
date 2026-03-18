@@ -91,7 +91,7 @@
         "go vet ./... passes"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": "TDD: Start by testing Adopt() for a directory (~/.config/fish/ with conf.d/ inside) — verify files moved and symlink created. Then test single file (~/.gitconfig). Then test PackageName() derivation for various paths. Use t.TempDir() for all filesystem operations."
     },
     {
@@ -108,7 +108,7 @@
         "go vet ./... passes"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "TDD: Start by testing round-trip: Save config with packages [\"fish\", \"git\"], Load it back, verify packages match. Then test loading a legacy config.toml (no packages key) returns empty slice. Existing config_test.go has patterns to follow."
     },
     {
