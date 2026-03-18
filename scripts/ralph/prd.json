@@ -54,7 +54,7 @@
         "go vet ./... passes"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "TDD: Start by testing that a temp dir containing .ssh/ and .cache/ are excluded from Scan() results. Then test that a directory with 150 files is excluded. Then test that a 2MB file is excluded. Check internal/drift/drift.go for existing deny-list patterns to align with."
     },
     {

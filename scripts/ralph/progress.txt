@@ -32,3 +32,15 @@ Branch: ralph/init-discovery
   - Most tests passed on first implementation — good sign the API design was right
   - t.TempDir() pattern continues to work well for filesystem tests
 ---
+
+## 2026-03-18 - US-003
+- Added DenyList (exported var): .ssh, .gnupg, .gpg, .npmrc, .netrc, .env, .boto, history files, .cache, .local, .Trash, node_modules, .DS_Store, etc.
+- Added MaxSize (1MB) and MaxFileCount (100) filters applied during Scan()
+- isDenied() checks entry name against deny list; isFiltered() checks size and file count
+- 4 RED→GREEN cycles: deny-list exclusion, exported DenyList var, file count filter (150 files), size filter (2MB file + 1.2MB dir)
+- Files: internal/scanner/scanner.go, internal/scanner/scanner_test.go
+- **Learnings for future iterations:**
+  - Implementing deny-list + size/count filters in one pass was clean since they share the same insertion point
+  - Aligning with drift.go's deny-list concept but keeping scanner's list focused on top-level entry names (not filename patterns)
+  - Size and count filters work well as constants (MaxSize, MaxFileCount) for easy adjustment
+---
