@@ -29,7 +29,7 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 	}
 
 	cfg, _ := config.Load(config.DefaultPath(pinfo.HomeDir))
-	dotfilesDir := resolveDotfilesDir(cfg, pinfo)
+	dotfilesDir := cfg.DotfilesDir
 
 	fmt.Println()
 

@@ -31,7 +31,7 @@ func runSync(_ *cobra.Command, _ []string) error {
 	}
 
 	cfg, _ := config.Load(config.DefaultPath(pinfo.HomeDir))
-	dotfilesDir := resolveDotfilesDir(cfg, pinfo)
+	dotfilesDir := cfg.DotfilesDir
 	if dotfilesDir == "" {
 		return fmt.Errorf("no dotfiles configured — run `kivtz init <url>` first")
 	}
@@ -116,14 +116,13 @@ func runSync(_ *cobra.Command, _ []string) error {
 
 func resolveConflicts(entries []stow.Entry) {
 	reader := bufio.NewReader(os.Stdin)
-	for _, e := range entries {
-		if e.Action != stow.Conflict {
+	for i := range entries {
+		if entries[i].Action != stow.Conflict {
 			continue
 		}
-		rel := shortPath(e.Target)
-		fmt.Printf("  %s\n", bold.Render(rel))
-		if e.Diff != "" {
-			for _, line := range strings.Split(e.Diff, "\n") {
+		fmt.Printf("  %s\n", bold.Render(shortPath(entries[i].Target)))
+		if entries[i].Diff != "" {
+			for _, line := range strings.Split(entries[i].Diff, "\n") {
 				switch {
 				case strings.HasPrefix(line, "---"), strings.HasPrefix(line, "+++"):
 					fmt.Printf("    %s\n", infoStyle.Render(line))
@@ -140,8 +139,8 @@ func resolveConflicts(entries []stow.Entry) {
 		answer, _ := reader.ReadString('\n')
 		switch strings.TrimSpace(answer) {
 		case "a", "A":
-			e.Action = stow.Link
-			if err := stow.Apply([]stow.Entry{e}); err != nil {
+			accepted := stow.Entry{Source: entries[i].Source, Target: entries[i].Target, Action: stow.Link}
+			if err := stow.Apply([]stow.Entry{accepted}); err != nil {
 				fmt.Printf("  %s %v\n", errStyle.Render("error:"), err)
 			} else {
 				fmt.Printf("  %s\n\n", success.Render("accepted"))

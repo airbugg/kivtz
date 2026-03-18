@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/airbugg/kivtz/internal/platform"
 	"github.com/spf13/cobra"
@@ -28,6 +29,8 @@ var selfUpdateCmd = &cobra.Command{
 
 const releasesAPI = "https://api.github.com/repos/airbugg/kivtz/releases/latest"
 
+var httpClient = &http.Client{Timeout: 30 * time.Second}
+
 func runSelfUpdate(_ *cobra.Command, _ []string) error {
 	pinfo, err := platform.Detect()
 	if err != nil {
@@ -38,7 +41,7 @@ func runSelfUpdate(_ *cobra.Command, _ []string) error {
 
 	fmt.Printf("\n  current: %s\n", buildVersion)
 
-	resp, err := http.Get(releasesAPI)
+	resp, err := httpClient.Get(releasesAPI)
 	if err != nil {
 		return fmt.Errorf("checking releases: %w", err)
 	}
@@ -91,7 +94,7 @@ func runSelfUpdate(_ *cobra.Command, _ []string) error {
 }
 
 func downloadAndReplace(url, dest string) error {
-	resp, err := http.Get(url)
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return err
 	}

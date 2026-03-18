@@ -59,6 +59,21 @@ func TestPlan_RelativeSymlink(t *testing.T) {
 	assert.Equal(t, stow.Skip, entries[0].Action)
 }
 
+func TestPlan_Conflict_IncludesDiff(t *testing.T) {
+	src, target := t.TempDir(), t.TempDir()
+	writeFile(t, filepath.Join(src, "config"), "line1\nrepo-line\nline3\n")
+	writeFile(t, filepath.Join(target, "config"), "line1\nlocal-line\nline3\n")
+
+	entries, err := stow.Plan(src, target)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, stow.Conflict, entries[0].Action)
+	assert.Contains(t, entries[0].Diff, "--- local")
+	assert.Contains(t, entries[0].Diff, "+++ repo")
+	assert.Contains(t, entries[0].Diff, "-local-line")
+	assert.Contains(t, entries[0].Diff, "+repo-line")
+}
+
 func TestPlan_ConflictingFile(t *testing.T) {
 	src, target := t.TempDir(), t.TempDir()
 	writeFile(t, filepath.Join(src, "config"), "repo version")

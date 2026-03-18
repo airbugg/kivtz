@@ -9,6 +9,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
 // Action classifies what should happen for a managed file.
@@ -45,10 +48,16 @@ func Plan(srcDir, targetDir string) ([]Entry, error) {
 		targetPath := filepath.Join(targetDir, rel)
 		action := classify(path, targetPath)
 
+		var diff string
+		if action == Conflict {
+			diff = generateDiff(targetPath, path)
+		}
+
 		entries = append(entries, Entry{
 			Source: path,
 			Target: targetPath,
 			Action: action,
+			Diff:   diff,
 		})
 		return nil
 	})
@@ -118,6 +127,39 @@ func resolveLink(path string) (string, error) {
 		target = filepath.Join(filepath.Dir(path), target)
 	}
 	return filepath.Clean(target), nil
+}
+
+func generateDiff(local, repo string) string {
+	localContent, err := os.ReadFile(local)
+	if err != nil {
+		return ""
+	}
+	repoContent, err := os.ReadFile(repo)
+	if err != nil {
+		return ""
+	}
+
+	dmp := diffmatchpatch.New()
+	a, b, lines := dmp.DiffLinesToChars(string(localContent), string(repoContent))
+	diffs := dmp.DiffMain(a, b, false)
+	diffs = dmp.DiffCharsToLines(diffs, lines)
+	diffs = dmp.DiffCleanupSemantic(diffs)
+
+	var buf strings.Builder
+	buf.WriteString("--- local (current)\n+++ repo (incoming)\n")
+	for _, d := range diffs {
+		for _, line := range strings.Split(strings.TrimRight(d.Text, "\n"), "\n") {
+			switch d.Type {
+			case diffmatchpatch.DiffDelete:
+				buf.WriteString("-" + line + "\n")
+			case diffmatchpatch.DiffInsert:
+				buf.WriteString("+" + line + "\n")
+			case diffmatchpatch.DiffEqual:
+				buf.WriteString(" " + line + "\n")
+			}
+		}
+	}
+	return buf.String()
 }
 
 func contentEqual(a, b string) bool {
