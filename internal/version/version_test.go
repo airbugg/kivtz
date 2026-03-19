@@ -1,6 +1,7 @@
 package version_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -127,4 +128,69 @@ func TestCachedCheck_ExpiredCache_CallsAPI(t *testing.T) {
 	info, err := version.CachedCheck("v0.2.0", cacheDir, srv.URL)
 	require.NoError(t, err)
 	assert.Equal(t, "v0.3.0", info.LatestVersion) // fresh from API, not cached v0.2.5
+}
+
+func TestPrintUpdateNotice_PrintsWhenAvailable(t *testing.T) {
+	srv := fakeReleasesServer("v0.3.0")
+	defer srv.Close()
+
+	cacheDir := t.TempDir()
+	var buf bytes.Buffer
+
+	version.PrintUpdateNotice("v0.2.0", cacheDir, srv.URL, &buf)
+
+	output := buf.String()
+	assert.Contains(t, output, "v0.3.0")
+	assert.Contains(t, output, "self-update")
+}
+
+func TestPrintUpdateNotice_SilentWhenUpToDate(t *testing.T) {
+	srv := fakeReleasesServer("v0.2.0")
+	defer srv.Close()
+
+	cacheDir := t.TempDir()
+	var buf bytes.Buffer
+
+	version.PrintUpdateNotice("v0.2.0", cacheDir, srv.URL, &buf)
+
+	assert.Empty(t, buf.String())
+}
+
+func TestPrintUpdateNotice_SilentOnError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+	}))
+	defer srv.Close()
+
+	cacheDir := t.TempDir()
+	var buf bytes.Buffer
+
+	version.PrintUpdateNotice("v0.2.0", cacheDir, srv.URL, &buf)
+
+	assert.Empty(t, buf.String())
+}
+
+func TestPrintUpdateNotice_SilentWhenEnvSet(t *testing.T) {
+	srv := fakeReleasesServer("v0.3.0")
+	defer srv.Close()
+
+	t.Setenv("KIVTZ_NO_UPDATE_CHECK", "1")
+	cacheDir := t.TempDir()
+	var buf bytes.Buffer
+
+	version.PrintUpdateNotice("v0.2.0", cacheDir, srv.URL, &buf)
+
+	assert.Empty(t, buf.String())
+}
+
+func TestPrintUpdateNotice_SilentForDevVersion(t *testing.T) {
+	srv := fakeReleasesServer("v0.3.0")
+	defer srv.Close()
+
+	cacheDir := t.TempDir()
+	var buf bytes.Buffer
+
+	version.PrintUpdateNotice("dev", cacheDir, srv.URL, &buf)
+
+	assert.Empty(t, buf.String())
 }

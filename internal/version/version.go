@@ -4,6 +4,7 @@ package version
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -112,6 +113,41 @@ func CachedCheck(currentVersion, cacheDir, apiURL string) (*UpdateInfo, error) {
 // ClearCache removes the update check cache file.
 func ClearCache(cacheDir string) {
 	os.Remove(filepath.Join(cacheDir, cacheFileName))
+}
+
+// PrintUpdateNotice checks for updates and prints a notice if one is available.
+// Runs the check in a goroutine with a 2-second timeout.
+// All errors are silently swallowed. No-op if KIVTZ_NO_UPDATE_CHECK=1 or version is "dev".
+// Output is written to w.
+func PrintUpdateNotice(currentVersion, cacheDir, apiURL string, w io.Writer) {
+	if os.Getenv("KIVTZ_NO_UPDATE_CHECK") == "1" {
+		return
+	}
+	if currentVersion == "dev" {
+		return
+	}
+
+	type result struct {
+		info *UpdateInfo
+		err  error
+	}
+	ch := make(chan result, 1)
+
+	go func() {
+		info, err := CachedCheck(currentVersion, cacheDir, apiURL)
+		ch <- result{info, err}
+	}()
+
+	select {
+	case res := <-ch:
+		if res.err != nil || res.info == nil || !res.info.Available {
+			return
+		}
+		fmt.Fprintf(w, "\n  update available: %s (current: %s)\n", res.info.LatestVersion, currentVersion)
+		fmt.Fprintf(w, "  run `kivtz self-update` to upgrade\n")
+	case <-time.After(2 * time.Second):
+		return
+	}
 }
 
 type httpError struct {
