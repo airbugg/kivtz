@@ -66,7 +66,9 @@ func runSelfUpdate(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	version.ClearCache(cacheDir)
+	if err := version.ClearCache(cacheDir); err != nil {
+		fmt.Printf("  %s %v\n", warning.Render("cache:"), err)
+	}
 	fmt.Printf("  %s %s → %s\n\n", success.Render("updated:"), buildVersion, info.LatestVersion)
 	return nil
 }

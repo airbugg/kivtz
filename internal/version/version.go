@@ -58,9 +58,13 @@ func CheckForUpdate(currentVersion, apiURL string) (*UpdateInfo, error) {
 
 	return &UpdateInfo{
 		LatestVersion: release.TagName,
-		Available:     release.TagName != "" && release.TagName != currentVersion,
+		Available:     isUpdateAvailable(release.TagName, currentVersion),
 		Assets:        release.Assets,
 	}, nil
+}
+
+func isUpdateAvailable(latest, current string) bool {
+	return latest != "" && latest != current
 }
 
 // FindAssetURL searches the UpdateInfo assets for the named asset and returns its download URL.
@@ -82,6 +86,8 @@ type CacheEntry struct {
 }
 
 // CachedCheck wraps CheckForUpdate with a 24-hour file cache.
+// Only caches version availability — Assets will be nil on cache hits.
+// Use CheckForUpdate directly when asset download URLs are needed.
 // apiURL defaults to ReleasesAPI if empty.
 func CachedCheck(currentVersion, cacheDir, apiURL string) (*UpdateInfo, error) {
 	cachePath := filepath.Join(cacheDir, cacheFileName)
@@ -91,7 +97,7 @@ func CachedCheck(currentVersion, cacheDir, apiURL string) (*UpdateInfo, error) {
 		if json.Unmarshal(data, &entry) == nil && time.Since(entry.CheckedAt) < cacheTTL {
 			return &UpdateInfo{
 				LatestVersion: entry.LatestVersion,
-				Available:     entry.LatestVersion != "" && entry.LatestVersion != currentVersion,
+				Available:     isUpdateAvailable(entry.LatestVersion, currentVersion),
 			}, nil
 		}
 	}
@@ -111,8 +117,12 @@ func CachedCheck(currentVersion, cacheDir, apiURL string) (*UpdateInfo, error) {
 }
 
 // ClearCache removes the update check cache file.
-func ClearCache(cacheDir string) {
-	os.Remove(filepath.Join(cacheDir, cacheFileName))
+func ClearCache(cacheDir string) error {
+	err := os.Remove(filepath.Join(cacheDir, cacheFileName))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }
 
 // PrintUpdateNotice checks for updates and prints a notice if one is available.
