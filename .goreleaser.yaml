@@ -29,4 +29,4 @@ release:
     name: kivtz
 
 changelog:
-  skip: true
+  disable: true
