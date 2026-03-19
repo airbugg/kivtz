@@ -13,6 +13,7 @@ import (
 	"github.com/airbugg/kivtz/internal/config"
 	"github.com/airbugg/kivtz/internal/platform"
 	"github.com/airbugg/kivtz/internal/stow"
+	"github.com/airbugg/kivtz/internal/version"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
@@ -50,6 +51,19 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "debug logging")
 	rootCmd.AddCommand(versionCmd)
+
+	rootCmd.PersistentPostRun = func(cmd *cobra.Command, _ []string) {
+		name := cmd.Name()
+		if name == "self-update" || name == "version" {
+			return
+		}
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return
+		}
+		cacheDir := filepath.Dir(config.DefaultPath(homeDir))
+		version.PrintUpdateNotice(buildVersion, cacheDir, "", os.Stderr)
+	}
 }
 
 var versionCmd = &cobra.Command{
