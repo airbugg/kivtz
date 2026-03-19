@@ -96,17 +96,34 @@ func TestPlan_SameContent_ReturnsLink(t *testing.T) {
 	assert.Equal(t, stow.Link, entries[0].Action)
 }
 
-func TestPlan_WrongSymlink(t *testing.T) {
+func TestPlan_WrongSymlink_LiveTarget(t *testing.T) {
 	src, target := t.TempDir(), t.TempDir()
 	writeFile(t, filepath.Join(src, "config"), "managed")
 
+	// Create a symlink pointing to a different but existing file
+	otherFile := filepath.Join(t.TempDir(), "other")
+	writeFile(t, otherFile, "other content")
 	targetFile := filepath.Join(target, "config")
-	require.NoError(t, os.Symlink("/some/other/path", targetFile))
+	require.NoError(t, os.Symlink(otherFile, targetFile))
 
 	entries, err := stow.Plan(src, target)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	assert.Equal(t, stow.Conflict, entries[0].Action)
+}
+
+func TestPlan_DanglingSymlink_ReturnsLink(t *testing.T) {
+	src, target := t.TempDir(), t.TempDir()
+	writeFile(t, filepath.Join(src, "config"), "managed")
+
+	// Symlink points to a path that no longer exists (e.g. after repo restructure)
+	targetFile := filepath.Join(target, "config")
+	require.NoError(t, os.Symlink("/old/removed/path/config", targetFile))
+
+	entries, err := stow.Plan(src, target)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, stow.Link, entries[0].Action)
 }
 
 func TestApply_CreatesSymlinks(t *testing.T) {

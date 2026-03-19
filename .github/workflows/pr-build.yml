@@ -1,0 +1,47 @@
+name: PR Build
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: release --snapshot --clean --config .goreleaser-snapshot.yaml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-binaries
+          path: dist/kivtz_*
+          retention-days: 7
+      - name: Generate artifact summary
+        id: summary
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          {
+            echo "comment<<EOF"
+            echo "### Snapshot Build"
+            echo "Binaries available as [workflow artifacts](${RUN_URL})."
+            echo ""
+            echo "**Checksums:**"
+            echo '```'
+            cat dist/checksums.txt
+            echo '```'
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: snapshot-build
+          message: ${{ steps.summary.outputs.comment }}

@@ -4,15 +4,12 @@ builds:
   - main: ./cmd/kivtz
     env:
       - CGO_ENABLED=0
-    goos:
-      - darwin
-      - linux
-    goarch:
-      - arm64
-      - amd64
+    targets:
+      - darwin_arm64
+      - linux_amd64
     ldflags:
       - -s -w
-      - -X main.version={{.Tag}}
+      - -X main.version=snapshot
       - -X main.commit={{.ShortCommit}}
       - -X main.date={{.Date}}
 
@@ -22,11 +19,6 @@ archives:
 
 checksum:
   name_template: checksums.txt
-
-release:
-  github:
-    owner: airbugg
-    name: kivtz
 
 changelog:
   disable: true
