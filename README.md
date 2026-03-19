@@ -61,24 +61,18 @@ Moves the file/directory into the dotfiles repo and creates a symlink at the ori
 
 ## Convention
 
-kivtz manages dotfiles repos with this layout:
+kivtz manages flat dotfiles repos. Each package lives at the root:
 
 ```
-common/     # stowed on all platforms
-macos/      # stowed on macOS only
-linux/      # stowed on Linux only
-wsl/        # stowed on WSL (layered on top of linux)
+fish/
+  .config/fish/config.fish    → ~/.config/fish/config.fish
+git/
+  .gitconfig                  → ~/.gitconfig
+nvim/
+  .config/nvim/init.lua       → ~/.config/nvim/init.lua
 ```
 
-Each directory contains packages mirroring your home directory structure. For example:
-
-```
-common/
-  fish/
-    .config/fish/config.fish    → ~/.config/fish/config.fish
-  git/
-    .gitconfig                  → ~/.gitconfig
-```
+Each machine selects which packages to manage via the `packages` field in its local config. No platform groups — use each tool's native config modularity (fish `conf.d`, git `include`, etc.) for platform-specific behavior.
 
 ## Config
 
