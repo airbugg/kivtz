@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/airbugg/kivtz/internal/version"
 	"github.com/stretchr/testify/assert"
@@ -82,4 +85,46 @@ func TestCheckForUpdate_NoReleases(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, info.Available)
 	assert.Empty(t, info.LatestVersion)
+}
+
+func TestCachedCheck_FreshCache_SkipsAPI(t *testing.T) {
+	apiCalls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiCalls++
+		json.NewEncoder(w).Encode(map[string]any{"tag_name": "v0.3.0", "assets": []any{}})
+	}))
+	defer srv.Close()
+
+	cacheDir := t.TempDir()
+
+	// First call hits API
+	info, err := version.CachedCheck("v0.2.0", cacheDir, srv.URL)
+	require.NoError(t, err)
+	assert.True(t, info.Available)
+	assert.Equal(t, 1, apiCalls)
+
+	// Second call uses cache
+	info2, err := version.CachedCheck("v0.2.0", cacheDir, srv.URL)
+	require.NoError(t, err)
+	assert.True(t, info2.Available)
+	assert.Equal(t, 1, apiCalls) // no additional API call
+}
+
+func TestCachedCheck_ExpiredCache_CallsAPI(t *testing.T) {
+	srv := fakeReleasesServer("v0.3.0")
+	defer srv.Close()
+
+	cacheDir := t.TempDir()
+
+	// Write an expired cache file (25 hours ago)
+	cache := version.CacheEntry{
+		LatestVersion: "v0.2.5",
+		CheckedAt:     time.Now().Add(-25 * time.Hour),
+	}
+	data, _ := json.Marshal(cache)
+	os.WriteFile(filepath.Join(cacheDir, "update-check.json"), data, 0o644)
+
+	info, err := version.CachedCheck("v0.2.0", cacheDir, srv.URL)
+	require.NoError(t, err)
+	assert.Equal(t, "v0.3.0", info.LatestVersion) // fresh from API, not cached v0.2.5
 }

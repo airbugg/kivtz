@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -68,6 +70,48 @@ func FindAssetURL(info *UpdateInfo, assetName string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("no binary %s in release %s", assetName, info.LatestVersion)
+}
+
+const cacheTTL = 24 * time.Hour
+const cacheFileName = "update-check.json"
+
+type CacheEntry struct {
+	LatestVersion string    `json:"latest_version"`
+	CheckedAt     time.Time `json:"checked_at"`
+}
+
+// CachedCheck wraps CheckForUpdate with a 24-hour file cache.
+// apiURL defaults to ReleasesAPI if empty.
+func CachedCheck(currentVersion, cacheDir, apiURL string) (*UpdateInfo, error) {
+	cachePath := filepath.Join(cacheDir, cacheFileName)
+
+	if data, err := os.ReadFile(cachePath); err == nil {
+		var entry CacheEntry
+		if json.Unmarshal(data, &entry) == nil && time.Since(entry.CheckedAt) < cacheTTL {
+			return &UpdateInfo{
+				LatestVersion: entry.LatestVersion,
+				Available:     entry.LatestVersion != "" && entry.LatestVersion != currentVersion,
+			}, nil
+		}
+	}
+
+	info, err := CheckForUpdate(currentVersion, apiURL)
+	if err != nil {
+		return nil, err
+	}
+
+	entry := CacheEntry{LatestVersion: info.LatestVersion, CheckedAt: time.Now()}
+	if data, err := json.Marshal(entry); err == nil {
+		os.MkdirAll(cacheDir, 0o755)
+		os.WriteFile(cachePath, data, 0o644)
+	}
+
+	return info, nil
+}
+
+// ClearCache removes the update check cache file.
+func ClearCache(cacheDir string) {
+	os.Remove(filepath.Join(cacheDir, cacheFileName))
 }
 
 type httpError struct {
