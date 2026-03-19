@@ -105,6 +105,10 @@ func classify(source, target string) Action {
 		if resolved == filepath.Clean(source) {
 			return Skip
 		}
+		// Dangling symlink (target no longer exists) — safe to replace
+		if _, err := os.Stat(target); os.IsNotExist(err) {
+			return Link
+		}
 		return Conflict
 	}
 
