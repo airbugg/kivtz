@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/airbugg/kivtz/compare/v0.3.0...v0.4.0) (2026-03-20)
+
+
+### Features
+
+* machine-based sync with dry-run ([#9](https://github.com/airbugg/kivtz/issues/9)) ([cfd993f](https://github.com/airbugg/kivtz/commit/cfd993f6fac1c3720029f31ca234f103964ab369))
+
+
+### Bug Fixes
+
+* chain GoReleaser after release-please in same workflow ([53853b3](https://github.com/airbugg/kivtz/commit/53853b3b8cf3fdf6e12df68045d54d5379f7663f))
+
 ## [0.3.0](https://github.com/airbugg/kivtz/compare/v0.2.0...v0.3.0) (2026-03-19)
 
 
