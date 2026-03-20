@@ -16,6 +16,7 @@ type Config struct {
 	RepoURL     string   `toml:"repo_url,omitempty"`
 	Platform    string   `toml:"platform"`
 	Hostname    string   `toml:"hostname"`
+	Machine     string   `toml:"machine,omitempty"`
 	Packages    []string `toml:"packages,omitempty"`
 }
 

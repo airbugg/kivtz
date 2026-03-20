@@ -185,6 +185,84 @@ func discoverPackages(dotfilesDir string) []string {
 }
 
 
+// planMachine plans stow operations for a single machine directory.
+// The machine dir is a direct mirror of $HOME — no package nesting.
+func planMachine(dotfilesDir, targetDir, machine string) (planResult, error) {
+	machineDir := filepath.Join(dotfilesDir, machine)
+
+	if _, err := os.Stat(machineDir); os.IsNotExist(err) {
+		return planResult{}, fmt.Errorf("machine directory %q not found in %s", machine, dotfilesDir)
+	}
+
+	entries, err := stow.Plan(machineDir, targetDir)
+	if err != nil {
+		return planResult{}, err
+	}
+
+	var result planResult
+	result.entries = entries
+
+	for _, e := range entries {
+		result.total++
+
+		switch e.Action {
+		case stow.Link:
+			result.pending++
+		case stow.Skip:
+			result.current++
+		case stow.Conflict:
+			result.conflicts++
+		}
+	}
+
+	return result, nil
+}
+
+// resolveMachine determines which machine directory to use.
+// Priority: config value > hostname match > error.
+func resolveMachine(dotfilesDir, configMachine, hostname string) (string, error) {
+	if configMachine != "" {
+		machineDir := filepath.Join(dotfilesDir, configMachine)
+
+		if _, err := os.Stat(machineDir); os.IsNotExist(err) {
+			return "", fmt.Errorf("configured machine %q not found in %s", configMachine, dotfilesDir)
+		}
+
+		return configMachine, nil
+	}
+
+	machineDir := filepath.Join(dotfilesDir, hostname)
+
+	if _, err := os.Stat(machineDir); err == nil {
+		return hostname, nil
+	}
+
+	return "", fmt.Errorf("no machine directory matches hostname %q — set machine in config.toml", hostname)
+}
+
+// formatDryRun produces a human-readable summary of a stow plan.
+func formatDryRun(entries []stow.Entry) string {
+	var b strings.Builder
+
+	for _, e := range entries {
+		target := shortPath(e.Target)
+		var action string
+
+		switch e.Action {
+		case stow.Link:
+			action = "link"
+		case stow.Skip:
+			action = "skip"
+		case stow.Conflict:
+			action = "conflict"
+		}
+
+		fmt.Fprintf(&b, "  %-10s %s\n", action, target)
+	}
+
+	return b.String()
+}
+
 type repoStatus struct {
 	clean   bool
 	changed int
