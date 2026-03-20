@@ -62,6 +62,35 @@ func TestPackages_Roundtrip(t *testing.T) {
 	assert.Equal(t, []string{"fish", "git"}, loaded.Packages)
 }
 
+func TestMachine_Roundtrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+
+	original := config.Config{
+		DotfilesDir: "~/.dotfiles",
+		RepoURL:     "github.com/airbugg/kivtzeynekuda",
+		Machine:     "macbook",
+	}
+
+	require.NoError(t, config.Save(original, path))
+
+	loaded, err := config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "macbook", loaded.Machine)
+}
+
+func TestMachine_LegacyConfigReturnsEmpty(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+
+	legacy := `dotfiles_dir = "~/.dotfiles"
+platform = "darwin"
+`
+	require.NoError(t, os.WriteFile(path, []byte(legacy), 0o644))
+
+	loaded, err := config.Load(path)
+	require.NoError(t, err)
+	assert.Empty(t, loaded.Machine)
+}
+
 func TestPackages_LegacyConfigReturnsEmptySlice(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 

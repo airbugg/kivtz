@@ -15,7 +15,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var dryRun bool
+
 func init() {
+	syncCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be done without making changes")
 	rootCmd.AddCommand(syncCmd)
 }
 
@@ -39,21 +42,51 @@ func runSync(_ *cobra.Command, _ []string) error {
 
 	fmt.Println()
 
-	online := isOnline()
-
-	// 1. Pull if online
-	if online {
-		if pulled, err := gitPull(dotfilesDir); err != nil {
-			fmt.Printf("  %s %v\n", warning.Render("pull:"), err)
-		} else if pulled {
-			fmt.Printf("  %s\n", success.Render("pulled latest"))
-		}
-	} else {
-		fmt.Printf("  %s\n", dim.Render("offline — skipping pull"))
+	if dryRun {
+		fmt.Printf("  %s\n\n", bold.Render("dry-run mode — no changes will be made"))
 	}
 
-	// 2. Apply (auto-link safe changes)
-	plan := planAll(dotfilesDir, pinfo.HomeDir, cfg.Packages)
+	online := !dryRun && isOnline()
+
+	// 1. Pull if online (skip in dry-run)
+	if !dryRun {
+		if online {
+			if pulled, err := gitPull(dotfilesDir); err != nil {
+				fmt.Printf("  %s %v\n", warning.Render("pull:"), err)
+			} else if pulled {
+				fmt.Printf("  %s\n", success.Render("pulled latest"))
+			}
+		} else {
+			fmt.Printf("  %s\n", dim.Render("offline — skipping pull"))
+		}
+	}
+
+	// 2. Plan — use machine-based if configured, else fall back to packages
+	var plan planResult
+
+	if cfg.Machine != "" {
+		machine, err := resolveMachine(dotfilesDir, cfg.Machine, pinfo.Hostname)
+		if err != nil {
+			return err
+		}
+
+		plan, err = planMachine(dotfilesDir, pinfo.HomeDir, machine)
+		if err != nil {
+			return err
+		}
+	} else {
+		plan = planAll(dotfilesDir, pinfo.HomeDir, cfg.Packages)
+	}
+
+	if dryRun {
+		fmt.Printf("  %s\n\n", infoStyle.Render(fmt.Sprintf("plan: %d to link, %d current, %d conflicts", plan.pending, plan.current, plan.conflicts)))
+		fmt.Print(formatDryRun(plan.entries))
+		fmt.Println()
+
+		return nil
+	}
+
+	// 3. Apply (auto-link safe changes)
 	if plan.pending > 0 {
 		if err := stow.Apply(plan.entries); err != nil {
 			fmt.Printf("  %s %v\n", errStyle.Render("apply error:"), err)
@@ -62,34 +95,62 @@ func runSync(_ *cobra.Command, _ []string) error {
 		}
 	}
 
-	// 3. Handle conflicts
+	// 4. Handle conflicts
 	if plan.conflicts > 0 {
 		fmt.Printf("\n  %s\n\n", warning.Render(fmt.Sprintf("%d conflicts:", plan.conflicts)))
 		resolveConflicts(plan.entries)
 	}
 
-	// 4. Detect drift
+	// 5. Detect drift
 	ignorePatterns, _ := drift.ParseIgnoreFile(filepath.Join(dotfilesDir, ".syncignore"))
-	packages := cfg.Packages
-	if len(packages) == 0 {
-		packages = discoverPackages(dotfilesDir)
-	}
-	allDrift := detectDriftFlat(dotfilesDir, pinfo.HomeDir, packages, ignorePatterns)
 
-	if len(allDrift) > 0 {
-		fmt.Printf("\n  %s\n", warning.Render(fmt.Sprintf("%d drifted files:", len(allDrift))))
-		for _, d := range allDrift {
-			kind := "overwritten"
-			if d.Kind == drift.New {
-				kind = "new"
+	if cfg.Machine != "" {
+		// Machine-based: drift detection on the machine dir directly
+		machineDir := filepath.Join(dotfilesDir, cfg.Machine)
+		allDrift := detectDriftMachine(machineDir, pinfo.HomeDir, ignorePatterns)
+
+		if len(allDrift) > 0 {
+			fmt.Printf("\n  %s\n", warning.Render(fmt.Sprintf("%d drifted files:", len(allDrift))))
+
+			for _, d := range allDrift {
+				kind := "overwritten"
+				if d.Kind == drift.New {
+					kind = "new"
+				}
+
+				rel, _ := filepath.Rel(pinfo.HomeDir, d.Path)
+				fmt.Printf("    %s  %s\n", dim.Render(kind), rel)
 			}
-			rel, _ := filepath.Rel(pinfo.HomeDir, d.Path)
-			fmt.Printf("    %s  [%s] %s\n", dim.Render(kind), d.Package, rel)
+
+			fmt.Println()
 		}
-		fmt.Println()
+	} else {
+		// Legacy package-based drift detection
+		packages := cfg.Packages
+		if len(packages) == 0 {
+			packages = discoverPackages(dotfilesDir)
+		}
+
+		allDrift := detectDriftFlat(dotfilesDir, pinfo.HomeDir, packages, ignorePatterns)
+
+		if len(allDrift) > 0 {
+			fmt.Printf("\n  %s\n", warning.Render(fmt.Sprintf("%d drifted files:", len(allDrift))))
+
+			for _, d := range allDrift {
+				kind := "overwritten"
+				if d.Kind == drift.New {
+					kind = "new"
+				}
+
+				rel, _ := filepath.Rel(pinfo.HomeDir, d.Path)
+				fmt.Printf("    %s  [%s] %s\n", dim.Render(kind), d.Package, rel)
+			}
+
+			fmt.Println()
+		}
 	}
 
-	// 5. Push if there are local changes
+	// 6. Push if there are local changes
 	status, _ := gitRepoStatus(dotfilesDir)
 	if !status.clean {
 		msg := generateCommitMessage(dotfilesDir)
@@ -100,7 +161,7 @@ func runSync(_ *cobra.Command, _ []string) error {
 		}
 	}
 
-	if plan.pending == 0 && plan.conflicts == 0 && len(allDrift) == 0 && status.clean {
+	if plan.pending == 0 && plan.conflicts == 0 && status.clean {
 		fmt.Printf("  %s\n", success.Render("everything in sync"))
 	}
 
@@ -110,11 +171,14 @@ func runSync(_ *cobra.Command, _ []string) error {
 
 func resolveConflicts(entries []stow.Entry) {
 	reader := bufio.NewReader(os.Stdin)
+
 	for i := range entries {
 		if entries[i].Action != stow.Conflict {
 			continue
 		}
+
 		fmt.Printf("  %s\n", bold.Render(shortPath(entries[i].Target)))
+
 		if entries[i].Diff != "" {
 			for _, line := range strings.Split(entries[i].Diff, "\n") {
 				switch {
@@ -129,8 +193,10 @@ func resolveConflicts(entries []stow.Entry) {
 				}
 			}
 		}
+
 		fmt.Printf("  %s ", dim.Render("[a]ccept  [s]kip  ?"))
 		answer, _ := reader.ReadString('\n')
+
 		switch strings.TrimSpace(answer) {
 		case "a", "A":
 			accepted := stow.Entry{Source: entries[i].Source, Target: entries[i].Target, Action: stow.Link}
@@ -150,7 +216,9 @@ func gitPull(dir string) (bool, error) {
 	if _, err := command.New("git", "pull", "--ff-only").Dir(dir).Run(); err != nil {
 		return false, err
 	}
+
 	after, _ := command.New("git", "rev-parse", "HEAD").Dir(dir).Run()
+
 	return strings.TrimSpace(before) != strings.TrimSpace(after), nil
 }
 
@@ -158,12 +226,15 @@ func gitCommitAndPush(dir, msg string, online bool) error {
 	if _, err := command.New("git", "add", "--all").Dir(dir).Run(); err != nil {
 		return fmt.Errorf("staging: %w", err)
 	}
+
 	if _, err := command.New("git", "commit", "-m", msg).Dir(dir).Run(); err != nil {
 		return fmt.Errorf("committing: %w", err)
 	}
+
 	if online {
 		command.New("git", "push").Dir(dir).Run() //nolint:errcheck // best-effort
 	}
+
 	return nil
 }
 
@@ -172,23 +243,53 @@ func generateCommitMessage(dir string) string {
 	if err != nil {
 		return "update configs"
 	}
+
 	pkgs := map[string]bool{}
+
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
 		if len(line) < 3 {
 			continue
 		}
+
 		file := strings.TrimSpace(line[2:])
 		parts := strings.SplitN(filepath.ToSlash(file), "/", 2)
 		pkgs[parts[0]] = true
 	}
+
 	names := make([]string, 0, len(pkgs))
 	for p := range pkgs {
 		names = append(names, p)
 	}
+
 	if len(names) == 0 {
 		return "update configs"
 	}
+
 	return "update " + strings.Join(names, ", ")
+}
+
+// detectDriftMachine runs drift detection for a single machine directory.
+func detectDriftMachine(machineDir, homeDir string, ignorePatterns []string) []drift.Entry {
+	// Wrap machineDir in a temp parent so drift.Detect (which expects
+	// a group dir containing package subdirs) scans correctly.
+	// The machine dir basename acts as the "package" name.
+	parentDir := filepath.Dir(machineDir)
+	machineName := filepath.Base(machineDir)
+
+	d, err := drift.Detect(parentDir, homeDir, ignorePatterns)
+	if err != nil {
+		return nil
+	}
+
+	var filtered []drift.Entry
+
+	for _, entry := range d {
+		if entry.Package == machineName {
+			filtered = append(filtered, entry)
+		}
+	}
+
+	return filtered
 }
 
 // detectDriftFlat runs drift detection for flat packages in dotfilesDir.
@@ -199,19 +300,24 @@ func detectDriftFlat(dotfilesDir, homeDir string, packages []string, ignorePatte
 	if err != nil {
 		return nil
 	}
+
 	if len(packages) == 0 {
 		return d
 	}
+
 	allowed := make(map[string]bool, len(packages))
 	for _, pkg := range packages {
 		allowed[pkg] = true
 	}
+
 	var filtered []drift.Entry
+
 	for _, entry := range d {
 		if allowed[entry.Package] {
 			filtered = append(filtered, entry)
 		}
 	}
+
 	return filtered
 }
 
@@ -221,5 +327,6 @@ func shortPath(path string) string {
 			return "~/" + rel
 		}
 	}
+
 	return path
 }
