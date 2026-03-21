@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/airbugg/kivtz/compare/v0.4.1...v0.4.2) (2026-03-21)
+
+
+### Bug Fixes
+
+* use semver comparison for update checks ([#12](https://github.com/airbugg/kivtz/issues/12)) ([b626023](https://github.com/airbugg/kivtz/commit/b6260230413ba893aba0c225e40e508cd67e9ea6))
+
 ## [0.4.1](https://github.com/airbugg/kivtz/compare/v0.4.0...v0.4.1) (2026-03-21)
 
 
