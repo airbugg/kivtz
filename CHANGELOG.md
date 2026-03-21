@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/airbugg/kivtz/compare/v0.4.0...v0.4.1) (2026-03-21)
+
+
+### Bug Fixes
+
+* syncignore matches patterns without package prefix ([#10](https://github.com/airbugg/kivtz/issues/10)) ([65ce9d5](https://github.com/airbugg/kivtz/commit/65ce9d5006358ad3b2e164bd4c5d98e59939916f))
+
 ## [0.4.0](https://github.com/airbugg/kivtz/compare/v0.3.0...v0.4.0) (2026-03-20)
 
 
