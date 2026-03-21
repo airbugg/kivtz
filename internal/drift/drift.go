@@ -136,11 +136,21 @@ func isSymlink(path string) bool {
 }
 
 func isIgnored(path string, patterns []string) bool {
+	// path format: "package/relative/file"
+	// Strip the package prefix to get just the relative path
+	relPath := path
+	if idx := strings.Index(path, "/"); idx >= 0 {
+		relPath = path[idx+1:]
+	}
+
 	for _, p := range patterns {
-		if strings.TrimSpace(p) == path {
+		p = strings.TrimSpace(p)
+
+		if p == path || p == relPath {
 			return true
 		}
 	}
+
 	return false
 }
 

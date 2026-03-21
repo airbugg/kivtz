@@ -113,6 +113,21 @@ func TestDetect_IgnorePatterns(t *testing.T) {
 	assert.Empty(t, entries)
 }
 
+func TestDetect_IgnorePatterns_WithoutPackagePrefix(t *testing.T) {
+	group, target := t.TempDir(), t.TempDir()
+
+	writeFile(t, filepath.Join(group, "macbook", ".config", "fish", "config.fish"), "# managed")
+	symlink(t, filepath.Join(group, "macbook", ".config", "fish", "config.fish"), filepath.Join(target, ".config", "fish", "config.fish"))
+
+	// New file that should be ignored by a prefix-less pattern
+	writeFile(t, filepath.Join(target, ".config", "fish", "fish_variables"), "auto-generated")
+
+	// Pattern WITHOUT "macbook/" prefix — should still match
+	entries, err := drift.Detect(group, target, []string{".config/fish/fish_variables"})
+	require.NoError(t, err)
+	assert.Empty(t, entries, "should ignore fish_variables even without package prefix in pattern")
+}
+
 func TestDetect_CleanState(t *testing.T) {
 	group, target := t.TempDir(), t.TempDir()
 
