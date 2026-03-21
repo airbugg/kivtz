@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"path/filepath"
 	"time"
 )
@@ -64,7 +66,37 @@ func CheckForUpdate(currentVersion, apiURL string) (*UpdateInfo, error) {
 }
 
 func isUpdateAvailable(latest, current string) bool {
-	return latest != "" && latest != current
+	if latest == "" || latest == current {
+		return false
+	}
+
+	return compareSemver(latest, current) > 0
+}
+
+// compareSemver returns >0 if a > b, <0 if a < b, 0 if equal.
+// Expects "vMAJOR.MINOR.PATCH" format.
+func compareSemver(a, b string) int {
+	av := parseSemver(a)
+	bv := parseSemver(b)
+
+	for i := range av {
+		if d := av[i] - bv[i]; d != 0 {
+			return d
+		}
+	}
+
+	return 0
+}
+
+func parseSemver(v string) [3]int {
+	parts := strings.SplitN(strings.TrimPrefix(v, "v"), ".", 3)
+	var result [3]int
+
+	for i, s := range parts {
+		result[i], _ = strconv.Atoi(s)
+	}
+
+	return result
 }
 
 // FindAssetURL searches the UpdateInfo assets for the named asset and returns its download URL.

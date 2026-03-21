@@ -130,6 +130,40 @@ func TestCachedCheck_ExpiredCache_CallsAPI(t *testing.T) {
 	assert.Equal(t, "v0.3.0", info.LatestVersion) // fresh from API, not cached v0.2.5
 }
 
+func TestCheckForUpdate_OlderRelease_NotAvailable(t *testing.T) {
+	srv := fakeReleasesServer("v0.3.0")
+	defer srv.Close()
+
+	info, err := version.CheckForUpdate("v0.4.0", srv.URL)
+	require.NoError(t, err)
+	assert.False(t, info.Available, "v0.3.0 should not be an update for v0.4.0")
+}
+
+func TestCheckForUpdate_SemverComparison(t *testing.T) {
+	tests := []struct {
+		current, latest string
+		available       bool
+	}{
+		{"v0.3.0", "v0.4.0", true},
+		{"v0.4.0", "v0.3.0", false},
+		{"v0.4.0", "v0.4.0", false},
+		{"v0.4.0", "v0.4.1", true},
+		{"v1.0.0", "v0.9.9", false},
+		{"v0.9.9", "v1.0.0", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.current+"→"+tt.latest, func(t *testing.T) {
+			srv := fakeReleasesServer(tt.latest)
+			defer srv.Close()
+
+			info, err := version.CheckForUpdate(tt.current, srv.URL)
+			require.NoError(t, err)
+			assert.Equal(t, tt.available, info.Available)
+		})
+	}
+}
+
 func TestPrintUpdateNotice_PrintsWhenAvailable(t *testing.T) {
 	srv := fakeReleasesServer("v0.3.0")
 	defer srv.Close()
